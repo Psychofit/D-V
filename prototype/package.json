@@ -1,0 +1,12 @@
+{
+  "name": "dv-prototype",
+  "version": "0.1.0",
+  "description": "D / V — минимальный прототип (первый срез): канат света/тьмы + экономика хила",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "sim": "node tools/run-sim.js",
+    "sim:long": "node tools/run-sim.js --sessions=12 --seconds=360 --csv=sim-run.csv",
+    "serve": "python3 -m http.server 8080"
+  }
+}
