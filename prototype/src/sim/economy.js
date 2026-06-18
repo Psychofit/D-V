@@ -18,6 +18,8 @@ export function payKill(world, killer) {
   if (!killer || killer.kind !== 'player') return;
   const amount = world.cfg.economy.killBase * darkBonus(world);
   killer.currency += amount;
+  killer.incomeTotal += amount;
+  killer.incomeKill += amount;
   killer.kills += 1;
 }
 
@@ -26,6 +28,8 @@ export function payEffectiveHeal(world, healer, effectiveHP) {
   if (effectiveHP <= 0) return; // оверхил = ноль награды → фарма нет, экстренный хил свободен
   const amount = effectiveHP * world.cfg.economy.healPayPerHP * darkBonus(world);
   healer.currency += amount;
+  healer.incomeTotal += amount;
+  healer.incomeHeal += amount;
   healer.totalHealDone += effectiveHP;
   world.stats.vIncomeAccum += amount; // для телеметрии (доход V во времени)
 }
