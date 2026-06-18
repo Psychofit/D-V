@@ -55,9 +55,9 @@ function runSession(cfg, seed, seconds, sampleInterval) {
 }
 
 function dumpCsv(path, rec) {
-  const head = 'time,darkness,net,darkInvested,lightInvested,dCurrency,vCurrency,vIncomeRate,enemies,dHp,vHp';
+  const head = 'time,darkness,net,darkInvested,lightInvested,dCurrency,vCurrency,vIncomeRate,enemies,dCount,vCount,dHp,vHp';
   const rows = rec.samples.map((s) =>
-    [s.t, s.darkness, s.net, s.darkInvested, s.lightInvested, s.dCurrency, s.vCurrency, s.vIncomeRate, s.enemies, s.dHp, s.vHp]
+    [s.t, s.darkness, s.net, s.darkInvested, s.lightInvested, s.dCurrency, s.vCurrency, s.vIncomeRate, s.enemies, s.dCount, s.vCount, s.dHp, s.vHp]
       .map((x) => (typeof x === 'number' ? Math.round(x * 1000) / 1000 : x)).join(','));
   writeFileSync(path, [head, ...rows].join('\n'));
 }
@@ -86,11 +86,14 @@ for (let i = 0; i < args.sessions; i++) {
   endTally[result.ending] = (endTally[result.ending] || 0) + 1;
   sumEnd += result.endT ?? world.time;
 
+  const last = rec.samples[rec.samples.length - 1] || {};
   const line =
     `seed ${String(seed).padStart(3)} | ${result.shape.padEnd(11)} | ` +
     `конец: ${(result.ending ?? '').padEnd(20)} | t=${String(Math.round(result.endT ?? world.time)).padStart(3)}с | ` +
     `corr=${(result.corr ?? 0).toFixed(2)} откат=${String(Math.round(result.drawdown ?? 0)).padStart(3)} ` +
-    `net∈[${Math.round(result.netMin ?? 0)},${Math.round(result.netMax ?? 0)}]`;
+    `net∈[${Math.round(result.netMin ?? 0)},${Math.round(result.netMax ?? 0)}] ` +
+    `D/V=${cfg.session.numD}/${cfg.session.numV}→${last.dCount ?? '?'}/${last.vCount ?? '?'} ` +
+    `толст(уб/спавн)=${world.stats.fatKilled}/${world.stats.fatSpawned}`;
   console.log(line);
   console.log('   net │ ' + sparkline(rec, 'net'));
   if (args.verbose) console.log('   метрики:', JSON.stringify(result));
@@ -105,8 +108,8 @@ for (const [label, n] of Object.entries(endTally).sort((a, b) => b[1] - a[1]))
   console.log(`  ${label.padEnd(20)} ${n}/${args.sessions}`);
 console.log(`  средняя длина сессии: ${Math.round(sumEnd / args.sessions)}с`);
 console.log('');
-console.log('Чтение (§12): OSCILLATES/STABLE = канат держится у центра → есть игра.');
-console.log('              DRIFT→DARK/LIGHT  = монотонно сваливается в край → крутить config.js.');
+console.log('Чтение (§12): OSCILLATES/STABLE/BOUNDED = канат держится у центра → есть игра.');
+console.log('              DRIFT→DARK/LIGHT = монотонно сваливается в край → крутить config.js.');
 console.log('='.repeat(78));
 
 if (args.csv && firstRec) {

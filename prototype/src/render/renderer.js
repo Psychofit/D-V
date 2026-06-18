@@ -54,9 +54,20 @@ export function createRenderer(canvas) {
         pr.effect === 'damage' ? '#ffd23f' : '#52ffb8', null);
     }
 
-    // враги
+    // враги (толстяк §2 — крупнее и иного цвета)
     for (const e of world.enemies) {
-      disc(e.pos.x, e.pos.y, e.radius, '#3a3a44', '#000');
+      disc(e.pos.x, e.pos.y, e.radius, e.type === 'fat' ? '#6e2f42' : '#3a3a44', '#000');
+      if (e.markedUntil > world.time) {            // метка V (§2): D бьёт сильнее
+        ctx.beginPath();
+        ctx.arc(e.pos.x, e.pos.y, e.radius + 3, 0, Math.PI * 2);
+        ctx.lineWidth = 2; ctx.strokeStyle = '#52ffb8'; ctx.stroke();
+      }
+      if (e.type === 'fat') {                       // полоска hp толстяка — виден фокус D
+        const frac = Math.max(0, e.hp / e.maxHp);
+        ctx.beginPath();
+        ctx.arc(e.pos.x, e.pos.y, e.radius + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+        ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffd23f'; ctx.stroke();
+      }
     }
 
     // игроки

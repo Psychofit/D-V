@@ -33,19 +33,28 @@ export function makePlayer(world, faction, pos) {
   };
 }
 
-export function makeEnemy(world, pos) {
-  const cfg = world.cfg.enemy;
+// type: 'swarm' (рой мелочи) | 'fat' (толстяк). Боевые статы копируются на сущность,
+// чтобы combat/ai не разветвлялись по типу — чисто масштабируется на новые типы врагов.
+export function makeEnemy(world, pos, type = 'swarm') {
+  const cfg = type === 'fat' ? world.cfg.enemyFat : world.cfg.enemy;
   return {
     id: world.nextId++,
     kind: 'enemy',
-    type: 'melee',
+    type,
     pos: { ...pos },
     vel: { x: 0, y: 0 },
     hp: cfg.hp,
     maxHp: cfg.hp,
     radius: cfg.radius,
     speed: cfg.speed,
+    contactDamage: cfg.contactDamage,
+    attackInterval: cfg.attackInterval,
+    attackRange: cfg.attackRange,
+    damageDarkGain: cfg.damageDarkGain,
+    attackSpeedDarkGain: cfg.attackSpeedDarkGain,
+    speedDarkGain: cfg.speedDarkGain,
     attackCooldown: 0,
+    markedUntil: 0,          // метка V (§2): D бьёт сильнее, пока world.time < markedUntil
     targetId: null,
     alive: true,
   };

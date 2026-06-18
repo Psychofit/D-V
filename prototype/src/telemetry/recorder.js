@@ -31,6 +31,7 @@ export function createRecorder(sampleInterval = 1.0) {
         (world.stats.vIncomeAccum - this.lastIncomeAccum) / this.sampleInterval;
       this.lastIncomeAccum = world.stats.vIncomeAccum;
 
+      const aliveCount = (f) => world.players.filter((p) => p.faction === f && p.alive).length;
       this.samples.push({
         t: world.time,
         darkness: world.darkness,
@@ -41,6 +42,9 @@ export function createRecorder(sampleInterval = 1.0) {
         vCurrency: sumCur('V'),
         vIncomeRate: incomeRate,
         enemies: world.enemies.length,
+        fatAlive: world.enemies.reduce((a, e) => a + (e.type === 'fat' ? 1 : 0), 0),
+        dCount: aliveCount('D'),
+        vCount: aliveCount('V'),
         dHp: hpFrac('D'),
         vHp: hpFrac('V'),
       });
@@ -101,9 +105,15 @@ export function classify(world, recorder, opts = {}) {
   const returnThresh = Math.max(opts.returnPoints ?? 8, range * (opts.returnFrac ?? 0.25));
   const hasReturns = drawdown >= returnThresh && runup >= returnThresh;
 
+  // "убежал в край" = net ушёл далеко за шкалу (норму тьмы). Если остался у центра —
+  // канат держится (есть игра), даже при слабом тренде (§12: дрейф = уход "без возврата").
+  const norm = world.cfg.darkness.normalizer;
+  const ranAway = hi > norm * 2.5 || lo < -norm * 2.5;
+
   let shape;
   if (range < (opts.flatPoints ?? 6)) shape = 'STABLE';
   else if (hasReturns) shape = 'OSCILLATES';
+  else if (!ranAway && range < norm * 2) shape = 'BOUNDED';   // держится у центра
   else if (corr > 0.8) shape = 'DRIFT→DARK';
   else if (corr < -0.8) shape = 'DRIFT→LIGHT';
   else shape = 'WANDERS';
