@@ -37,10 +37,12 @@ export function makePlayer(world, faction, pos) {
   };
 }
 
-// type: 'swarm' (рой мелочи) | 'fat' (толстяк). Боевые статы копируются на сущность,
-// чтобы combat/ai не разветвлялись по типу — чисто масштабируется на новые типы врагов.
+// Типы врага (§3): 'swarm' рой · 'fat' толстяк · 'hunter' охотник · 'ranged' дальнобой.
+// Боевые статы копируются на сущность, чтобы combat/ai не разветвлялись по типу.
+const ENEMY_CFG = { swarm: 'enemy', fat: 'enemyFat', hunter: 'enemyHunter', ranged: 'enemyRanged' };
+
 export function makeEnemy(world, pos, type = 'swarm') {
-  const cfg = type === 'fat' ? world.cfg.enemyFat : world.cfg.enemy;
+  const cfg = world.cfg[ENEMY_CFG[type] || 'enemy'];
   return {
     id: world.nextId++,
     kind: 'enemy',
@@ -53,10 +55,15 @@ export function makeEnemy(world, pos, type = 'swarm') {
     speed: cfg.speed,
     contactDamage: cfg.contactDamage,
     attackInterval: cfg.attackInterval,
-    attackRange: cfg.attackRange,
+    attackRange: cfg.attackRange ?? 22,
     damageDarkGain: cfg.damageDarkGain,
     attackSpeedDarkGain: cfg.attackSpeedDarkGain,
     speedDarkGain: cfg.speedDarkGain,
+    attackKind: cfg.attackKind ?? 'melee',       // 'melee' | 'ranged'
+    targetPref: cfg.targetPref ?? 'nearest',     // 'nearest' | 'healer'(V)
+    fireRange: cfg.fireRange ?? 0,               // для дальнобоя
+    projectileSpeed: cfg.projectileSpeed ?? 0,
+    projectileRadius: cfg.projectileRadius ?? 5,
     attackCooldown: 0,
     markedUntil: 0,          // метка V (§2): D бьёт сильнее, пока world.time < markedUntil
     targetId: null,
