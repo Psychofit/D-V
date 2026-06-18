@@ -8,7 +8,7 @@
 // • Тьма = интенсивность: враг в тьме бьёт БОЛЬНЕЕ и ЧАЩЕ, но не толще (§3).
 // =============================================================================
 
-import { add, scale, dist, norm } from '../core/vec2.js';
+import { add, sub, scale, dist, len, norm } from '../core/vec2.js';
 import { makeProjectile } from './entities.js';
 import { payKill, payEffectiveHeal } from './economy.js';
 
@@ -36,6 +36,33 @@ export function fireProjectile(world, player, aimDir) {
   }));
 
   player.shotCooldown = cfg.shotInterval;
+  return true;
+}
+
+// Пульс D (§2): мгновенная конусная атака В УПОР. Бьёт сильнее выстрела и по площади
+// конуса, но требует стоять вплотную → D ест урон → V на нём больше зарабатывает.
+// Метка V множит и урон пульса (вклад V = умноженный удар D).
+export function pulseAttack(world, player, aimDir) {
+  if (player.shotCooldown > 0) return false;
+  const d = norm(aimDir);
+  if (d.x === 0 && d.y === 0) return false;
+  const pc = world.cfg.D.pulse;
+  const cosHalf = Math.cos(pc.coneHalfAngle);
+
+  for (const e of world.enemies) {
+    if (!e.alive) continue;
+    const to = sub(e.pos, player.pos);
+    const dd = len(to);
+    if (dd > pc.range + e.radius) continue;
+    const cos = dd > 1e-6 ? (to.x * d.x + to.y * d.y) / dd : 1;
+    if (cos < cosHalf) continue;                 // вне конуса перед лицом
+    const dmg = pc.damage * (e.markedUntil > world.time ? world.cfg.mark.damageMul : 1);
+    e.hp -= dmg;
+    player.totalDamageDone += dmg;
+    if (e.hp <= 0) killEnemy(world, e, player);
+  }
+  player.shotCooldown = pc.interval;
+  player.pulseFx = { t: world.time, aim: d };      // транзиентный след для рендера
   return true;
 }
 

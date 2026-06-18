@@ -11,7 +11,7 @@
 // =============================================================================
 
 import { add, sub, scale, norm, dist, dir } from '../core/vec2.js';
-import { fireProjectile } from './combat.js';
+import { fireProjectile, pulseAttack } from './combat.js';
 import { canBuyNode, buyNode } from './economy.js';
 
 function nearestEnemy(world, pos, type = null) {
@@ -73,12 +73,8 @@ function dAI(world, d, dt) {
     // жизнь в чужих руках — жмёмся к V (§1: у D нет кнопки спасения)
     setMove(d, dir(d.pos, medic.pos), dt);
   } else if (enemy) {
-    const dd = dist(d.pos, enemy.pos);
-    if (dd > cfg.dEngageRange) setMove(d, dir(d.pos, enemy.pos), dt);        // подойти
-    else if (dd < cfg.dEngageRange * 0.7) setMove(d, dir(enemy.pos, d.pos), dt); // отойти (кайт)
-    else d.vel = { x: 0, y: 0 };
-    // стрелять по ближайшему врагу в зоне
-    if (dd <= world.cfg.D.shotRange) fireProjectile(world, d, dir(d.pos, enemy.pos));
+    if (world.cfg.D.weapon === 'pulse') dPulseEngage(world, d, enemy, dt);
+    else dShotEngage(world, d, enemy, dt);
   } else {
     d.vel = { x: 0, y: 0 };
   }
@@ -86,6 +82,24 @@ function dAI(world, d, dt) {
   // вложение в урон → тянет мир к тьме (§4). Отзывчивый D придерживает тьму,
   // когда мир уже темнее порога (§10: баланс как своекорыстный оптимум).
   if (world.darkness < cfg.dDarkStopAt && canBuyNode(world, d)) buyNode(world, d);
+}
+
+function dShotEngage(world, d, enemy, dt) {
+  const cfg = world.cfg.ai;
+  const dd = dist(d.pos, enemy.pos);
+  if (dd > cfg.dEngageRange) setMove(d, dir(d.pos, enemy.pos), dt);            // подойти
+  else if (dd < cfg.dEngageRange * 0.7) setMove(d, dir(enemy.pos, d.pos), dt);// отойти (кайт)
+  else d.vel = { x: 0, y: 0 };
+  if (dd <= world.cfg.D.shotRange) fireProjectile(world, d, dir(d.pos, enemy.pos));
+}
+
+function dPulseEngage(world, d, enemy, dt) {
+  // Пульсер НЫРЯЕТ в упор (§2): встаёт вплотную в свалку → ест урон → нуждается в V.
+  const pc = world.cfg.D.pulse;
+  const dd = dist(d.pos, enemy.pos);
+  if (dd > pc.range * 0.55) setMove(d, dir(d.pos, enemy.pos), dt);            // подойти вплотную
+  else d.vel = { x: 0, y: 0 };
+  if (dd <= pc.range + enemy.radius) pulseAttack(world, d, dir(d.pos, enemy.pos));
 }
 
 function vAI(world, v, dt) {

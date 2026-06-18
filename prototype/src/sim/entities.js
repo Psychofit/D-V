@@ -33,6 +33,7 @@ export function makePlayer(world, faction, pos) {
     controlled: false,       // захвачен человеком (браузер)
     aim: { x: 1, y: 0 },     // направление прицела (для управляемого режима)
     wantShoot: false,
+    pulseFx: null,           // транзиентный след пульса D (для рендера)
   };
 }
 

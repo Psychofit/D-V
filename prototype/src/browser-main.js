@@ -6,7 +6,7 @@
 
 import { CONFIG } from './config.js';
 import { createWorld, stepWorld } from './sim/world.js';
-import { fireProjectile } from './sim/combat.js';
+import { fireProjectile, pulseAttack } from './sim/combat.js';
 import { createRenderer } from './render/renderer.js';
 import { createHud } from './render/hud.js';
 import { createRecorder } from './telemetry/recorder.js';
@@ -56,7 +56,10 @@ function applyInput() {
 
   if (mouse.down) {
     const aim = { x: mouse.x - p.pos.x, y: mouse.y - p.pos.y };
-    if (aim.x || aim.y) fireProjectile(world, p, aim);
+    if (aim.x || aim.y) {
+      if (p.faction === 'D' && cfg.D.weapon === 'pulse') pulseAttack(world, p, aim);
+      else fireProjectile(world, p, aim);
+    }
   }
 }
 
