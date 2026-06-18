@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D / V — прототип (первый срез)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #0a0a0f; color: #d6d6e0;
+    font: 14px/1.4 system-ui, sans-serif; display: flex; flex-direction: column;
+    align-items: center; gap: 12px; padding: 14px;
+  }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; color: #9aa; letter-spacing: .5px; }
+  h1 b { color: #e5484d; } h1 i { color: #3e9bff; font-style: normal; }
+  .wrap { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  canvas#game { background: #181820; border-radius: 8px; max-width: 100%; height: auto;
+    box-shadow: 0 6px 30px #0008; cursor: crosshair; }
+  .side { display: flex; flex-direction: column; gap: 10px; width: 290px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  button { background: #1d1d27; color: #d6d6e0; border: 1px solid #333; border-radius: 6px;
+    padding: 6px 10px; cursor: pointer; font: inherit; }
+  button:hover { background: #262633; }
+  label.toggle { display: flex; gap: 6px; align-items: center; cursor: pointer;
+    background: #1d1d27; border: 1px solid #333; border-radius: 6px; padding: 6px 10px; }
+  .dv-panel { background: #12121a; border: 1px solid #24242e; border-radius: 8px; padding: 12px; }
+  .dv-row { display: flex; justify-content: space-between; margin: 3px 0; }
+  .dv-row.dv-dim { color: #888; }
+  .dv-bar { height: 10px; background: #23232e; border-radius: 5px; overflow: hidden; margin: 4px 0 8px; }
+  #dv-darkbar { height: 100%; width: 0; background: linear-gradient(90deg, #6a6a80, #e5484d); transition: width .1s; }
+  #dv-chart { width: 100%; margin-top: 8px; border-radius: 6px; background: #0d0d12; }
+  .dv-cap { color: #666; font-size: 11px; margin-top: 6px; }
+  .hint { color: #777; font-size: 12px; max-width: 620px; text-align: center; }
+  .hint kbd { background: #1d1d27; border: 1px solid #333; border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+  <h1><b>D</b> / <i>V</i> — прототип каната (первый срез, §12)</h1>
+  <div class="wrap">
+    <canvas id="game"></canvas>
+    <div class="side">
+      <div class="controls">
+        <button id="btn-pause">пауза / пробел</button>
+        <button id="btn-speed">скорость ×1</button>
+        <button id="btn-reset">рестарт</button>
+      </div>
+      <label class="toggle"><input type="checkbox" id="chk-responsive"> отзывчивый D (§10)</label>
+      <div id="hud"></div>
+    </div>
+  </div>
+  <div class="hint">
+    Боты ведут обе стороны. «Вселиться»: <kbd>1</kbd> в D · <kbd>2</kbd> в V · <kbd>0</kbd> отпустить.
+    Движение <kbd>WASD</kbd>, выстрел — <b>мышь зажата</b> (у V выстрел = хил союзника / урон врагу).
+    Включите «отзывчивый D» и сравните график net: дрейф в тьму → плато.
+  </div>
+  <script type="module" src="./src/browser-main.js"></script>
+</body>
+</html>

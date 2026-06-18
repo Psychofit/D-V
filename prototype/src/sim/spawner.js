@@ -1,0 +1,33 @@
+// =============================================================================
+// spawner — враги спавнятся из ЦЕНТРА поля (GDD §7): давят на D и V одновременно
+// и поровну с первой секунды.
+//
+// Ось "СОСТАВ" (§3): частота спавна растёт по ходу сессии (как далеко зашли).
+// Ось "ИНТЕНСИВНОСТЬ" (тьма) НЕ здесь — она в combat (урон/скорость атаки), §3:
+// "тьма добавляет требовательности к координации, а не HP".
+// =============================================================================
+
+import { makeEnemy } from './entities.js';
+
+export function updateSpawner(world, dt) {
+  world.spawnTimer -= dt;
+  if (world.spawnTimer > 0) return;
+  if (world.enemies.length >= world.cfg.world.maxEnemies) {
+    world.spawnTimer = 0.25;
+    return;
+  }
+
+  const s = world.cfg.spawn;
+  const progress = Math.min(1, world.time / world.cfg.world.sessionMaxSeconds);
+  // частота растёт со временем → интервал убывает (ось "состав")
+  const interval = s.baseInterval / (1 + s.intervalSessionGain * progress);
+  world.spawnTimer = interval;
+
+  const cx = world.cfg.world.width / 2;
+  const cy = world.cfg.world.height / 2;
+  for (let i = 0; i < s.burst; i++) {
+    const off = world.rng.unit();
+    const r = world.rng.range(0, s.centerJitter);
+    world.enemies.push(makeEnemy(world, { x: cx + off.x * r, y: cy + off.y * r }));
+  }
+}

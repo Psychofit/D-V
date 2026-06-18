@@ -1,0 +1,12 @@
+# генерируемые прогоном артефакты
+*.csv
+prototype/sim-run.csv
+
+# node
+node_modules/
+npm-debug.log*
+
+# редакторы/ОС
+.DS_Store
+.vscode/
+.idea/
