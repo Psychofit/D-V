@@ -13,7 +13,8 @@ export function createHud(root) {
       <div class="dv-row dv-dim"><span>вложено D / V</span><span><b id="dv-di">0</b> / <b id="dv-li">0</b></span></div>
       <div class="dv-row dv-dim"><span>валюта D / V</span><span><b id="dv-dc">0</b> / <b id="dv-vc">0</b></span></div>
       <div class="dv-row dv-dim"><span>доход V</span><span id="dv-vinc">0.0/с</span></div>
-      <div class="dv-row dv-dim"><span>враги / t</span><span><b id="dv-en">0</b> / <span id="dv-t">0</span>с</span></div>
+      <div class="dv-row dv-dim"><span>живых D / V</span><span><b id="dv-dn">0</b> / <b id="dv-vn">0</b></span></div>
+      <div class="dv-row dv-dim"><span>враги (толст) / t</span><span><b id="dv-en">0</b> (<span id="dv-fat">0</span>) / <span id="dv-t">0</span>с</span></div>
       <div class="dv-row"><span>статус</span><b id="dv-status">running</b></div>
       <canvas id="dv-chart" width="264" height="88"></canvas>
       <div class="dv-cap">net(t): ↑тьма ↓свет. Ровно/колеблется = есть игра; монотонный дрейф = сваливается (§12)</div>
@@ -23,8 +24,8 @@ export function createHud(root) {
   const els = {
     darkv: $('#dv-darkv'), darkbar: $('#dv-darkbar'), net: $('#dv-net'),
     di: $('#dv-di'), li: $('#dv-li'), dc: $('#dv-dc'), vc: $('#dv-vc'),
-    vinc: $('#dv-vinc'), en: $('#dv-en'), t: $('#dv-t'), status: $('#dv-status'),
-    chart: $('#dv-chart'),
+    vinc: $('#dv-vinc'), en: $('#dv-en'), fat: $('#dv-fat'), t: $('#dv-t'),
+    dn: $('#dv-dn'), vn: $('#dv-vn'), status: $('#dv-status'), chart: $('#dv-chart'),
   };
   const cctx = els.chart.getContext('2d');
 
@@ -65,7 +66,10 @@ export function createHud(root) {
     els.dc.textContent = sumCur('D').toFixed(0);
     els.vc.textContent = sumCur('V').toFixed(0);
     els.vinc.textContent = `${(last.vIncomeRate ?? 0).toFixed(1)}/с`;
+    els.dn.textContent = world.players.filter((p) => p.faction === 'D' && p.alive).length;
+    els.vn.textContent = world.players.filter((p) => p.faction === 'V' && p.alive).length;
     els.en.textContent = world.enemies.length;
+    els.fat.textContent = world.enemies.reduce((a, e) => a + (e.type === 'fat' ? 1 : 0), 0);
     els.t.textContent = world.time.toFixed(0);
     els.status.textContent = world.fury && world.running ? 'ЯРОСТЬ (все V мертвы)' : world.status;
     els.status.style.color = world.running ? '#4ad66d' : '#e5484d';

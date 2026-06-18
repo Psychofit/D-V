@@ -37,16 +37,26 @@ export function createWorld(cfg, seed = 1) {
     status: 'running',  // running | collapse-D | collapse-V | collapse-both
     fury: false,        // вспышка "все V мертвы" (§6)
     events: [],
-    stats: { vIncomeAccum: 0 },
+    stats: { vIncomeAccum: 0, fatSpawned: 0, fatKilled: 0 },
     findPlayer(id) {
       for (const p of this.players) if (p.id === id) return p;
       return null;
     },
   };
 
-  // §7: спавн по разным концам поля
-  world.players.push(makePlayer(world, 'D', { x: m, y: H - m }));       // нижний-левый
-  world.players.push(makePlayer(world, 'V', { x: W - m, y: m }));       // верхний-правый
+  // §7: D и V стартуют кластерами по разным углам (враги — из центра).
+  const spread = cfg.session.cornerSpread;
+  const cluster = (faction, corner, n) => {
+    for (let i = 0; i < n; i++) {
+      const pos = {
+        x: clamp(corner.x + (world.rng.next() - 0.5) * spread, m, W - m),
+        y: clamp(corner.y + (world.rng.next() - 0.5) * spread, m, H - m),
+      };
+      world.players.push(makePlayer(world, faction, pos));
+    }
+  };
+  cluster('D', { x: m, y: H - m }, cfg.session.numD);   // нижний-левый угол
+  cluster('V', { x: W - m, y: m }, cfg.session.numV);   // верхний-правый угол
   return world;
 }
 

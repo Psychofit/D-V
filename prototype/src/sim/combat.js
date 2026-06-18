@@ -42,14 +42,12 @@ export function updateCooldowns(world, dt) {
   for (const e of world.enemies) if (e.attackCooldown > 0) e.attackCooldown -= dt;
 }
 
-// Враги бьют в упор. Тьма делает удары больнее и чаще (§3).
+// Враги бьют в упор. Тьма делает удары больнее и чаще (§3). Статы — по типу врага.
 export function updateEnemyAttacks(world, dt) {
-  const ec = world.cfg.enemy;
-  const dmgMul = 1 + world.darkness * ec.damageDarkGain;
-  const spdMul = 1 + world.darkness * ec.attackSpeedDarkGain;
-
   for (const e of world.enemies) {
     if (!e.alive || e.attackCooldown > 0) continue;
+    const dmgMul = 1 + world.darkness * e.damageDarkGain;
+    const spdMul = 1 + world.darkness * e.attackSpeedDarkGain;
     // ближайший живой игрок в зоне удара
     let target = null, best = Infinity;
     for (const p of world.players) {
@@ -57,9 +55,9 @@ export function updateEnemyAttacks(world, dt) {
       const dd = dist(e.pos, p.pos);
       if (dd < best) { best = dd; target = p; }
     }
-    if (target && best <= e.radius + target.radius + ec.attackRange) {
-      target.hp -= ec.contactDamage * dmgMul;
-      e.attackCooldown = ec.attackInterval / spdMul;
+    if (target && best <= e.radius + target.radius + e.attackRange) {
+      target.hp -= e.contactDamage * dmgMul;
+      e.attackCooldown = e.attackInterval / spdMul;
       if (target.hp <= 0) {
         target.hp = 0;
         target.alive = false;
@@ -82,6 +80,13 @@ export function updateProjectiles(world, dt) {
   }
 }
 
+// Общая смерть врага: пометить, посчитать толстяков, заплатить добившему.
+function killEnemy(world, enemy, killer) {
+  enemy.alive = false;
+  if (enemy.type === 'fat') world.stats.fatKilled++;
+  payKill(world, killer); // валюта добившему (§4, §5)
+}
+
 function resolveDamageProjectile(world, pr) {
   // D-снаряд: ближайший задетый враг
   let hit = null, best = Infinity;
@@ -93,13 +98,12 @@ function resolveDamageProjectile(world, pr) {
   if (!hit) return;
 
   const owner = world.findPlayer(pr.ownerId);
-  hit.hp -= pr.power;
-  if (owner) owner.totalDamageDone += pr.power;
+  // метка V множит урон D (§2: вклад V = умноженный выстрел D)
+  const dmg = pr.power * (hit.markedUntil > world.time ? world.cfg.mark.damageMul : 1);
+  hit.hp -= dmg;
+  if (owner) owner.totalDamageDone += dmg;
   pr.alive = false;
-  if (hit.hp <= 0) {
-    hit.alive = false;
-    payKill(world, owner); // валюта добившему (§4, §5)
-  }
+  if (hit.hp <= 0) killEnemy(world, hit, owner);
 }
 
 function resolveHealProjectile(world, pr) {
@@ -122,14 +126,15 @@ function resolveHealProjectile(world, pr) {
   pr.alive = false;
 
   if (isEnemy) {
-    // жжёт врага — V слабее в добивании (burnFactor), это специализация, не уценка (§2)
-    const burn = pr.power * world.cfg.V.burnFactor;
+    // V СТАВИТ МЕТКУ на врага (§2): почти не жжёт сам, но даёт D бить сильнее.
+    // Так V добивает толстяка не своим уроном, а множителем урона D.
+    hit.markedUntil = world.time + world.cfg.mark.duration;
+    // потолок по толщине (§2): по толстяку burn V почти ноль — он за его потолком
+    const thickness = hit.type === 'fat' ? world.cfg.V.fatBurnFactor : 1;
+    const burn = pr.power * world.cfg.V.burnFactor * thickness;
     hit.hp -= burn;
     if (owner) owner.totalDamageDone += burn;
-    if (hit.hp <= 0) {
-      hit.alive = false;
-      payKill(world, owner);
-    }
+    if (hit.hp <= 0) killEnemy(world, hit, owner);
   } else {
     // лечит D — платим ТОЛЬКО за эффективные HP (оверхил = 0, §5)
     const before = hit.hp;

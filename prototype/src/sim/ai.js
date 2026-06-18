@@ -14,10 +14,11 @@ import { add, sub, scale, norm, dist, dir } from '../core/vec2.js';
 import { fireProjectile } from './combat.js';
 import { canBuyNode, buyNode } from './economy.js';
 
-function nearestEnemy(world, pos) {
+function nearestEnemy(world, pos, type = null) {
   let best = null, bd = Infinity;
   for (const e of world.enemies) {
     if (!e.alive) continue;
+    if (type && e.type !== type) continue;
     const d = dist(pos, e.pos);
     if (d < bd) { bd = d; best = e; }
   }
@@ -57,13 +58,14 @@ function enemyAI(world, e) {
   }
   if (!target) { e.vel = { x: 0, y: 0 }; return; }
   // тьма ускоряет врага → он догоняет кайтящего D (§3, замыкает канат)
-  const speed = e.speed * (1 + world.darkness * world.cfg.enemy.speedDarkGain);
+  const speed = e.speed * (1 + world.darkness * e.speedDarkGain);
   e.vel = scale(dir(e.pos, target.pos), speed);
 }
 
 function dAI(world, d, dt) {
   const cfg = world.cfg.ai;
-  const enemy = nearestEnemy(world, d.pos);
+  // D фокусит толстяка как приоритетную угрозу (за потолком V, добивается только D §2)
+  const enemy = nearestEnemy(world, d.pos, 'fat') || nearestEnemy(world, d.pos);
   const medic = nearestAlly(world, d, 'V');
   const lowHp = d.hp < cfg.dRetreatHp * d.maxHp;
 
