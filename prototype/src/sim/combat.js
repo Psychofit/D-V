@@ -8,7 +8,7 @@
 // • Тьма = интенсивность: враг в тьме бьёт БОЛЬНЕЕ и ЧАЩЕ, но не толще (§3).
 // =============================================================================
 
-import { add, scale, dist, norm } from '../core/vec2.js';
+import { add, sub, scale, dist, len, norm } from '../core/vec2.js';
 import { makeProjectile } from './entities.js';
 import { payKill, payEffectiveHeal } from './economy.js';
 
@@ -20,20 +20,49 @@ export function fireProjectile(world, player, aimDir) {
 
   const cfg = world.cfg[player.faction];
   const isD = player.faction === 'D';
+  const area = !isD && cfg.areaHeal;            // V с прокачкой в площадь (§2)
   const muzzle = add(player.pos, scale(d, player.radius + cfg.projectileRadius + 1));
 
   world.projectiles.push(makeProjectile(world, {
     faction: player.faction,
-    effect: isD ? 'damage' : 'heal',
+    effect: isD ? 'damage' : area ? 'area' : 'heal',
     ownerId: player.id,
     pos: muzzle,
     vel: scale(d, cfg.projectileSpeed),
     power: isD ? player.shotDamage : player.healPower,
     radius: cfg.projectileRadius,
-    range: cfg.shotRange,
+    // площадь бьёт ближе (§2: короче радиус, ближе к клинчу)
+    range: isD ? cfg.shotRange : area ? cfg.shotRange * cfg.area.rangeFactor : cfg.shotRange,
   }));
 
   player.shotCooldown = cfg.shotInterval;
+  return true;
+}
+
+// Пульс D (§2): мгновенная конусная атака В УПОР. Бьёт сильнее выстрела и по площади
+// конуса, но требует стоять вплотную → D ест урон → V на нём больше зарабатывает.
+// Метка V множит и урон пульса (вклад V = умноженный удар D).
+export function pulseAttack(world, player, aimDir) {
+  if (player.shotCooldown > 0) return false;
+  const d = norm(aimDir);
+  if (d.x === 0 && d.y === 0) return false;
+  const pc = world.cfg.D.pulse;
+  const cosHalf = Math.cos(pc.coneHalfAngle);
+
+  for (const e of world.enemies) {
+    if (!e.alive) continue;
+    const to = sub(e.pos, player.pos);
+    const dd = len(to);
+    if (dd > pc.range + e.radius) continue;
+    const cos = dd > 1e-6 ? (to.x * d.x + to.y * d.y) / dd : 1;
+    if (cos < cosHalf) continue;                 // вне конуса перед лицом
+    const dmg = pc.damage * (e.markedUntil > world.time ? world.cfg.mark.damageMul : 1);
+    e.hp -= dmg;
+    player.totalDamageDone += dmg;
+    if (e.hp <= 0) killEnemy(world, e, player);
+  }
+  player.shotCooldown = pc.interval;
+  player.pulseFx = { t: world.time, aim: d };      // транзиентный след для рендера
   return true;
 }
 
@@ -73,10 +102,51 @@ export function updateProjectiles(world, dt) {
     const step = scale(pr.vel, dt);
     pr.pos = add(pr.pos, step);
     pr.traveled += Math.hypot(step.x, step.y);
-    if (pr.traveled >= pr.range) { pr.alive = false; continue; }
 
+    if (pr.effect === 'area') { updateAreaProjectile(world, pr); continue; }
+    if (pr.traveled >= pr.range) { pr.alive = false; continue; }
     if (pr.effect === 'damage') resolveDamageProjectile(world, pr);
     else resolveHealProjectile(world, pr);
+  }
+}
+
+// Площадной снаряд V (§2): детонирует там, где есть кого лечить — когда СОЮЗНЫЙ D
+// входит в радиус импульса (или на макс. дальности). Затем импульс по радиусу: лечит
+// ВСЕХ D и жжёт/метит ВСЕХ врагов в нём. Площадь не блокируется толпой → V зарабатывает
+// хилом в скученном бою (одноцель — перехватывается врагами на пути к D).
+function updateAreaProjectile(world, pr) {
+  const R = world.cfg.V.area.radius;
+  let nearAlly = false;
+  for (const p of world.players) {
+    if (p.alive && p.faction === 'D' && dist(pr.pos, p.pos) <= R) { nearAlly = true; break; }
+  }
+  if (nearAlly || pr.traveled >= pr.range) {
+    detonateArea(world, pr);
+    pr.alive = false;
+  }
+}
+
+function detonateArea(world, pr) {
+  const owner = world.findPlayer(pr.ownerId);
+  const a = world.cfg.V.area;
+  const R = a.radius;
+
+  // лечим всех D в радиусе — платим за эффективные HP (оверхил = 0, §5)
+  for (const p of world.players) {
+    if (!p.alive || p.faction !== 'D' || dist(pr.pos, p.pos) > R) continue;
+    const before = p.hp;
+    p.hp = Math.min(p.maxHp, p.hp + pr.power * a.healFactor);
+    if (owner) payEffectiveHeal(world, owner, p.hp - before);
+  }
+  // жжём + метим всех врагов в радиусе (по толстяку — потолок толщины §2)
+  for (const e of world.enemies) {
+    if (!e.alive || dist(pr.pos, e.pos) > R) continue;
+    e.markedUntil = world.time + world.cfg.mark.duration;
+    const thickness = e.type === 'fat' ? world.cfg.V.fatBurnFactor : 1;
+    const burn = pr.power * a.burnFactor * thickness;
+    e.hp -= burn;
+    if (owner) owner.totalDamageDone += burn;
+    if (e.hp <= 0) killEnemy(world, e, owner);
   }
 }
 

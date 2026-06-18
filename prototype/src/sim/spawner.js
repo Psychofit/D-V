@@ -19,8 +19,10 @@ export function updateSpawner(world, dt) {
 
   const s = world.cfg.spawn;
   const progress = Math.min(1, world.time / world.cfg.world.sessionMaxSeconds);
-  // частота растёт со временем → интервал убывает (ось "состав")
-  const interval = s.baseInterval / (1 + s.intervalSessionGain * progress);
+  // интервал убывает со временем (ось "состав") И с числом игроков (толпа → больше врагов)
+  const players = Math.max(1, world.players.filter((p) => p.alive).length);
+  const crowd = players / s.refPlayers;
+  const interval = s.baseInterval / ((1 + s.intervalSessionGain * progress) * crowd);
   world.spawnTimer = interval;
 
   // доля толстяков растёт с прогрессом сессии (ось "состав" §3), с порога fatStartProgress

@@ -16,7 +16,9 @@ export function darkBonus(world) {
 // Выплата за убийство врага (идёт добившему).
 export function payKill(world, killer) {
   if (!killer || killer.kind !== 'player') return;
-  const amount = world.cfg.economy.killBase * darkBonus(world);
+  // §5/§8: доход V с убийств урезается (его деньги — хил, а не урон)
+  const vFactor = killer.faction === 'V' ? world.cfg.economy.vKillFactor : 1;
+  const amount = world.cfg.economy.killBase * darkBonus(world) * vFactor;
   killer.currency += amount;
   killer.incomeTotal += amount;
   killer.incomeKill += amount;

@@ -81,6 +81,18 @@ export function createRenderer(canvas) {
         ctx.stroke();
         continue;
       }
+      // конус Пульса D (§2) — транзиентный след
+      if (p.pulseFx && world.time - p.pulseFx.t < 0.12) {
+        const pc = world.cfg.D.pulse;
+        const ang = Math.atan2(p.pulseFx.aim.y, p.pulseFx.aim.x);
+        const alpha = 0.4 * (1 - (world.time - p.pulseFx.t) / 0.12);
+        ctx.beginPath();
+        ctx.moveTo(p.pos.x, p.pos.y);
+        ctx.arc(p.pos.x, p.pos.y, pc.range, ang - pc.coneHalfAngle, ang + pc.coneHalfAngle);
+        ctx.closePath();
+        ctx.fillStyle = `rgba(255,210,63,${alpha})`;
+        ctx.fill();
+      }
       const fill = p.faction === 'D' ? '#e5484d' : '#3e9bff';
       disc(p.pos.x, p.pos.y, p.radius, fill, p.controlled ? '#fff' : '#0008');
       hpRing(p);
