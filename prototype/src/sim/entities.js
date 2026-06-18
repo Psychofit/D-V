@@ -21,6 +21,9 @@ export function makePlayer(world, faction, pos) {
     healPower: faction === 'V' ? cfg.healPower : 0,    // используется V (хил/урон)
     shotCooldown: 0,
     currency: 0,
+    incomeTotal: 0,          // валовой заработок за сессию (до трат) — сигнал для выбора фракции §5
+    incomeKill: 0,           // из них с убийств врагов
+    incomeHeal: 0,           // из них с эффективного хила (только V; "симбиозный" доход §5)
     nodesBought: 0,
     // накопительная статистика для телеметрии:
     totalHealDone: 0,        // эффективный хил (только V)
