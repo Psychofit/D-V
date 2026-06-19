@@ -96,6 +96,11 @@ export function createRenderer(canvas) {
       }
       const fill = p.faction === 'D' ? '#e5484d' : '#3e9bff';
       disc(p.pos.x, p.pos.y, p.radius, fill, p.controlled ? '#fff' : '#0008');
+      if (p.provoker) {                         // аггро-роль §7 — оранжевое кольцо
+        ctx.beginPath();
+        ctx.arc(p.pos.x, p.pos.y, p.radius + 7, 0, Math.PI * 2);
+        ctx.lineWidth = 1.5; ctx.strokeStyle = '#d9863b'; ctx.stroke();
+      }
       hpRing(p);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px monospace';

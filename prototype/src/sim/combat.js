@@ -72,9 +72,20 @@ export function updateCooldowns(world, dt) {
 }
 
 // Выбор цели врагом (§3): охотник/дальнобой целят ХИЛЕРА (V), остальные — ближайшего.
+// Аггро-нода §7: провокатор-D в радиусе провокации перехватывает V-целящего врага на себя.
 export function pickEnemyTarget(world, enemy) {
   let best = null, bd = Infinity;
   if (enemy.targetPref === 'healer') {
+    // провокатор перебивает цель: тянет охотника/дальнобоя на себя (защита V)
+    const R = world.cfg.D.aggro.radius;
+    for (const p of world.players) {
+      if (!p.alive || !p.provoker) continue;
+      const d = dist(enemy.pos, p.pos);
+      if (d <= R && d < bd) { bd = d; best = p; }
+    }
+    if (best) return best;
+    // иначе — ближайший V
+    bd = Infinity;
     for (const p of world.players) {
       if (!p.alive || p.faction !== 'V') continue;
       const d = dist(enemy.pos, p.pos);

@@ -31,6 +31,7 @@ export function makePlayer(world, faction, pos) {
     kills: 0,
     alive: true,
     controlled: false,       // захвачен человеком (браузер)
+    provoker: false,         // взял аггро-роль §7 (стягивает V-целящих врагов на себя)
     aim: { x: 1, y: 0 },     // направление прицела (для управляемого режима)
     wantShoot: false,
     pulseFx: null,           // транзиентный след пульса D (для рендера)

@@ -57,6 +57,11 @@ export function createWorld(cfg, seed = 1) {
   };
   cluster('D', { x: m, y: H - m }, cfg.session.numD);   // нижний-левый угол
   cluster('V', { x: W - m, y: m }, cfg.session.numV);   // верхний-правый угол
+
+  // §7: часть D берёт аггро-роль (провокаторы стягивают V-целящих врагов на себя)
+  const ds = world.players.filter((p) => p.faction === 'D');
+  const provokers = Math.round(ds.length * cfg.D.aggro.provokerFraction);
+  for (let i = 0; i < provokers; i++) ds[i].provoker = true;
   return world;
 }
 
