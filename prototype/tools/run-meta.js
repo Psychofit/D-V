@@ -11,6 +11,7 @@
 import { CONFIG, withOverrides } from '../src/config.js';
 import {
   measureLandscape, runDynamics, measureBuilds, measureBuildLandscape, runBuildDynamics,
+  measureVHealByDensity,
 } from '../src/meta/factionMeta.js';
 
 function parseArgs(argv) {
@@ -20,7 +21,7 @@ function parseArgs(argv) {
     const m = rest[i].match(/^--([^=]+)(?:=(.*))?$/);
     if (!m) continue;
     const [, k, val] = m;
-    if (['landscape', 'dynamics', 'builds', 'buildscape', 'builddyn'].includes(k)) a.mode = k;
+    if (['landscape', 'dynamics', 'builds', 'buildscape', 'builddyn', 'vheal'].includes(k)) a.mode = k;
     else if (k === 'set') a.sets.push(val ?? rest[++i]);
     else if (k === 'splits') a.splits = (val ?? rest[++i]).split(',').map(Number);
     else if (k in a) a[k] = Number(val);
@@ -94,6 +95,23 @@ if (args.mode === 'landscape') {
     console.log('→ V/D пересекает 1 → есть точка равновесия → выбор может сходиться к балансу.');
   else
     console.log('→ V доходнее везде → коллапс в all-V.');
+} else if (args.mode === 'vheal') {
+  // Ветки хила V по плотности (§2): одноцель — ранняя/разреженная фаза, площадь — поздняя/скученная.
+  console.log('ВЕТКИ ХИЛА V по ПЛОТНОСТИ боя (§2: кривая синхронизирована с дугой сессии).');
+  console.log(`сессия=${cfg.meta.sessionSeconds}с. Где какая ветка держит симбиоз (выживаемость D)?`);
+  console.log('='.repeat(80));
+  console.log('  D=V | площадь: D-выжив / тьма | одноцель: D-выжив / тьма | кто держит');
+  const rows = measureVHealByDensity(cfg, { seed: args.seed });
+  for (const r of rows) {
+    const win = r.single.dSurv > r.area.dSurv + 0.1 ? 'одноцель'
+      : r.area.dSurv > r.single.dSurv + 0.1 ? 'площадь' : '≈ обе';
+    console.log(`  ${String(r.n).padStart(3)} | ` +
+      `${(r.area.dSurv * 100).toFixed(0).padStart(8)}% / ${r.area.dark.toFixed(2)} | ` +
+      `${(r.single.dSurv * 100).toFixed(0).padStart(9)}% / ${r.single.dark.toFixed(2)} | ${win}`);
+  }
+  console.log('='.repeat(80));
+  console.log('Ожидаемо (§2): разреженно — одноцель ≈ площади (её фаза); скученно — нужна площадь.');
+  console.log('→ Ветки V горизонтальны ПО ФАЗЕ (не в одном контексте, как оружие D). Билд V зависит от плотности.');
 } else if (args.mode === 'builddyn') {
   // Петля выбора билда D (§8/§10): сходится к миксу или сваливается в all-shot?
   const runs = [];

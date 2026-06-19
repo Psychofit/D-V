@@ -29,7 +29,8 @@ export function fireProjectile(world, player, aimDir) {
     ownerId: player.id,
     pos: muzzle,
     vel: scale(d, cfg.projectileSpeed),
-    power: isD ? player.shotDamage : player.healPower,
+    // одноцель — фокус-бёрст (§2: точечный): больше на цель, чем площадь, спасает фокус-цель
+    power: isD ? player.shotDamage : area ? player.healPower : player.healPower * cfg.singleHealFactor,
     radius: cfg.projectileRadius,
     // площадь бьёт ближе (§2: короче радиус, ближе к клинчу)
     range: isD ? cfg.shotRange : area ? cfg.shotRange * cfg.area.rangeFactor : cfg.shotRange,
@@ -262,41 +263,22 @@ function resolveDamageProjectile(world, pr) {
 }
 
 function resolveHealProjectile(world, pr) {
-  // V-снаряд: ближайшая задетая цель среди врагов (жечь) и СОЮЗНЫХ D (лечить).
-  // Что окажется на пути первым — то и получит эффект (позиционная драма V, §2).
-  let hit = null, best = Infinity, isEnemy = false;
-  for (const e of world.enemies) {
-    if (!e.alive) continue;
-    const dd = dist(pr.pos, e.pos);
-    if (dd <= pr.radius + e.radius && dd < best) { best = dd; hit = e; isEnemy = true; }
-  }
+  // Одноцель V (§2): ТОЧНЫЙ адресный хил — летит СКВОЗЬ врагов к раненому D (не блокируется,
+  // в отличие от площади). Размен §2: дальность/точность/безопасность ↔ охват. Игнорирует
+  // врагов (это не "лечить-или-жечь", а прицельный хил), полный хил одной цели, V держится далеко.
+  let hit = null, best = Infinity;
   for (const p of world.players) {
-    if (!p.alive || p.faction !== 'D') continue; // лечим только D (§5)
+    if (!p.alive || p.faction !== 'D') continue;
     const dd = dist(pr.pos, p.pos);
-    if (dd <= pr.radius + p.radius && dd < best) { best = dd; hit = p; isEnemy = false; }
+    if (dd <= pr.radius + p.radius && dd < best) { best = dd; hit = p; }
   }
   if (!hit) return;
 
   const owner = world.findPlayer(pr.ownerId);
   pr.alive = false;
-
-  if (isEnemy) {
-    // V СТАВИТ МЕТКУ на врага (§2): почти не жжёт сам, но даёт D бить сильнее.
-    // Так V добивает толстяка не своим уроном, а множителем урона D.
-    hit.markedUntil = world.time + world.cfg.mark.duration;
-    // потолок по толщине (§2): по толстяку burn V почти ноль — он за его потолком
-    const thickness = hit.type === 'fat' ? world.cfg.V.fatBurnFactor : 1;
-    const burn = pr.power * world.cfg.V.burnFactor * thickness;
-    hit.hp -= burn;
-    if (owner) owner.totalDamageDone += burn;
-    if (hit.hp <= 0) killEnemy(world, hit, owner);
-  } else {
-    // лечит D — платим ТОЛЬКО за эффективные HP (оверхил = 0, §5). Глушитель давит хил (§3).
-    const before = hit.hp;
-    hit.hp = Math.min(hit.maxHp, hit.hp + pr.power * suppressionAt(world, hit.pos));
-    const effective = hit.hp - before;
-    if (owner) payEffectiveHeal(world, owner, effective);
-  }
+  const before = hit.hp;
+  hit.hp = Math.min(hit.maxHp, hit.hp + pr.power * suppressionAt(world, hit.pos)); // глушитель давит §3
+  if (owner) payEffectiveHeal(world, owner, hit.hp - before);
 }
 
 // Снять мёртвых и улетевшие снаряды.

@@ -204,6 +204,36 @@ export function classifyBuild(history) {
   return { label, meanPf: round(mean), min: round(lo), max: round(hi) };
 }
 
+// Ветки хила V по ПЛОТНОСТИ боя (§2: одноцель=ранняя/разреженная фаза, площадь=поздняя/скученная;
+// "кривая синхронизирована с дугой сессии"). Свип numD=numV: где какая ветка тянет симбиоз.
+export function measureVHealByDensity(baseCfg, opts = {}) {
+  const seconds = opts.sessionSeconds ?? baseCfg.meta.sessionSeconds;
+  const repeats = opts.repeats ?? 6;
+  const seed = opts.seed ?? 1;
+  const densities = opts.densities ?? [2, 4, 6, 8, 10];
+  const rows = [];
+  for (const n of densities) {
+    const out = {};
+    for (const branch of ['area', 'single']) {
+      let dSurv = 0, dark = 0, vInc = 0;
+      for (let r = 0; r < repeats; r++) {
+        const cfg = withOverrides(baseCfg, { session: { numD: n, numV: n }, loadouts: { V: { areaFraction: branch === 'area' ? 1 : 0 } } });
+        const world = createWorld(cfg, seed + n * 31 + r);
+        const dt = cfg.world.dt;
+        while (world.running && world.time < seconds) stepWorld(world, dt);
+        const ds = world.players.filter((p) => p.faction === 'D');
+        dSurv += ds.filter((p) => p.alive).length / Math.max(1, ds.length);
+        dark += world.darkness;
+        const vs = world.players.filter((p) => p.faction === 'V');
+        vInc += vs.reduce((a, p) => a + p.incomeTotal, 0) / Math.max(1, vs.length);
+      }
+      out[branch] = { dSurv: dSurv / repeats, dark: dark / repeats, vInc: vInc / repeats };
+    }
+    rows.push({ n, area: out.area, single: out.single });
+  }
+  return rows;
+}
+
 // Выбор фракции: правило Льюса по подушевому доходу + привлекательность V (§9) + рацио.
 function rechoose(factions, payoffD, payoffV, meta, rng) {
   const N = factions.length;
