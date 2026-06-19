@@ -40,7 +40,10 @@ export function makePlayer(world, faction, pos) {
 
 // Типы врага (§3): 'swarm' рой · 'fat' толстяк · 'hunter' охотник · 'ranged' дальнобой.
 // Боевые статы копируются на сущность, чтобы combat/ai не разветвлялись по типу.
-const ENEMY_CFG = { swarm: 'enemy', fat: 'enemyFat', hunter: 'enemyHunter', ranged: 'enemyRanged' };
+const ENEMY_CFG = {
+  swarm: 'enemy', fat: 'enemyFat', hunter: 'enemyHunter',
+  ranged: 'enemyRanged', suppressor: 'enemySuppressor',
+};
 
 export function makeEnemy(world, pos, type = 'swarm') {
   const cfg = world.cfg[ENEMY_CFG[type] || 'enemy'];
@@ -65,6 +68,10 @@ export function makeEnemy(world, pos, type = 'swarm') {
     fireRange: cfg.fireRange ?? 0,               // для дальнобоя
     projectileSpeed: cfg.projectileSpeed ?? 0,
     projectileRadius: cfg.projectileRadius ?? 5,
+    suppressRadius: cfg.suppressRadius ?? 0,     // для глушителя (§3)
+    suppressRadiusDarkGain: cfg.suppressRadiusDarkGain ?? 0,
+    healSuppressFactor: cfg.healSuppressFactor ?? 1,
+    standoff: cfg.standoff ?? 0,
     attackCooldown: 0,
     markedUntil: 0,          // метка V (§2): D бьёт сильнее, пока world.time < markedUntil
     targetId: null,

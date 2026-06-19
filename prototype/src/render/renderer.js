@@ -48,14 +48,27 @@ export function createRenderer(canvas) {
     ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
     ctx.stroke();
 
+    // зоны глушителя (§3) — "мёртвая зона" хила, под сущностями
+    for (const e of world.enemies) {
+      if (!e.alive || e.type !== 'suppressor') continue;
+      const r = e.suppressRadius * (1 + world.darkness * e.suppressRadiusDarkGain);
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(120,40,120,0.10)';
+      ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(170,80,170,0.4)'; ctx.stroke();
+    }
+
     // снаряды: D-урон жёлтый, V-хил/площадь зелёный, вражеский — красный (входящая угроза)
     for (const pr of world.projectiles) {
       const c = pr.effect === 'damage' ? '#ffd23f' : pr.effect === 'enemyShot' ? '#ff5566' : '#52ffb8';
       disc(pr.pos.x, pr.pos.y, pr.radius, c, null);
     }
 
-    // враги: цвет по типу (§3). рой/толстяк/охотник/дальнобой
-    const enemyColor = { swarm: '#3a3a44', fat: '#6e2f42', hunter: '#d9863b', ranged: '#5a59b0' };
+    // враги: цвет по типу (§3). рой/толстяк/охотник/дальнобой/глушитель
+    const enemyColor = {
+      swarm: '#3a3a44', fat: '#6e2f42', hunter: '#d9863b', ranged: '#5a59b0', suppressor: '#9a3d9a',
+    };
     for (const e of world.enemies) {
       disc(e.pos.x, e.pos.y, e.radius, enemyColor[e.type] || '#3a3a44', '#000');
       if (e.markedUntil > world.time) {            // метка V (§2): D бьёт сильнее

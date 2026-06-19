@@ -55,12 +55,12 @@ function enemyAI(world, e) {
   // тьма ускоряет врага → он догоняет кайтящего D (§3, замыкает канат)
   const speed = e.speed * (1 + world.darkness * e.speedDarkGain);
 
-  if (e.attackKind === 'ranged') {
-    // держит дистанцию ~80% дальности стрельбы: достаёт V, но не лезет в ближний бой
+  if (e.attackKind === 'ranged' || e.attackKind === 'none') {
+    // дальнобой держит дистанцию стрельбы; глушитель — standoff, накрывая бой зоной (§3)
     const d = dist(e.pos, target.pos);
-    const want = e.fireRange * 0.8;
+    const want = e.attackKind === 'ranged' ? e.fireRange * 0.8 : e.standoff;
     if (d > want * 1.1) e.vel = scale(dir(e.pos, target.pos), speed);       // подойти на дистанцию
-    else if (d < want * 0.7) e.vel = scale(dir(target.pos, e.pos), speed);  // отойти (кайт от клинча)
+    else if (d < want * 0.7) e.vel = scale(dir(target.pos, e.pos), speed);  // отойти (не лезть в клинч)
     else e.vel = { x: 0, y: 0 };
   } else {
     e.vel = scale(dir(e.pos, target.pos), speed);                            // ближний/охотник — на цель

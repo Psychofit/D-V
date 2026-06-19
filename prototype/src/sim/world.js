@@ -12,7 +12,7 @@ import { updateDarkness } from './darkness.js';
 import { updateSpawner } from './spawner.js';
 import { updateAI } from './ai.js';
 import {
-  updateCooldowns, updateEnemyAttacks, updateProjectiles, sweepDead,
+  updateCooldowns, updateEnemyAttacks, updateProjectiles, updateSuppression, sweepDead,
 } from './combat.js';
 import { clamp } from '../core/vec2.js';
 
@@ -121,6 +121,7 @@ export function stepWorld(world, dt) {
   integrate(world, dt);        // движение игроков и врагов
   updateEnemyAttacks(world, dt);
   updateProjectiles(world, dt);// движение снарядов + попадания + выплаты
+  updateSuppression(world);    // §3 глушитель: снять метки V в зоне (хил давится в самом хиле)
   applyFury(world, dt);        // §6 вспышка
   sweepDead(world);
   checkCrash(world);

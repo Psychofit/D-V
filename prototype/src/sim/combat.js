@@ -107,11 +107,35 @@ function killPlayer(world, p) {
   world.events.push({ t: world.time, type: 'death', faction: p.faction, id: p.id });
 }
 
+// Глушитель (§3): множитель хила в точке (1 вне зон; healSuppressFactor в зоне). В тьме зона шире.
+function suppressionAt(world, pos) {
+  let factor = 1;
+  for (const e of world.enemies) {
+    if (!e.alive || e.type !== 'suppressor') continue;
+    const r = e.suppressRadius * (1 + world.darkness * e.suppressRadiusDarkGain);
+    if (dist(pos, e.pos) <= r) factor = Math.min(factor, e.healSuppressFactor);
+  }
+  return factor;
+}
+
+// Глушитель снимает метки V с врагов в своей зоне (§3) — бьёт по глаголу игры.
+export function updateSuppression(world) {
+  const supps = world.enemies.filter((e) => e.alive && e.type === 'suppressor');
+  if (!supps.length) return;
+  for (const e of world.enemies) {
+    if (!e.alive || e.markedUntil <= world.time) continue;
+    for (const s of supps) {
+      const r = s.suppressRadius * (1 + world.darkness * s.suppressRadiusDarkGain);
+      if (dist(e.pos, s.pos) <= r) { e.markedUntil = 0; break; }
+    }
+  }
+}
+
 // Атаки врагов. Тьма делает удары больнее и чаще (§3). Ближний бьёт в упор; дальнобой
 // шлёт снаряд по цели из своей зоны (в тьме чаще/больнее → сжимает V-кромку §3).
 export function updateEnemyAttacks(world, dt) {
   for (const e of world.enemies) {
-    if (!e.alive || e.attackCooldown > 0) continue;
+    if (!e.alive || e.attackCooldown > 0 || e.attackKind === 'none') continue;
     const target = pickEnemyTarget(world, e);
     if (!target) continue;
     const dmgMul = 1 + world.darkness * e.damageDarkGain;
@@ -192,11 +216,11 @@ function detonateArea(world, pr) {
   const a = world.cfg.V.area;
   const R = a.radius;
 
-  // лечим всех D в радиусе — платим за эффективные HP (оверхил = 0, §5)
+  // лечим всех D в радиусе — платим за эффективные HP (оверхил = 0, §5). Глушитель давит хил (§3).
   for (const p of world.players) {
     if (!p.alive || p.faction !== 'D' || dist(pr.pos, p.pos) > R) continue;
     const before = p.hp;
-    p.hp = Math.min(p.maxHp, p.hp + pr.power * a.healFactor);
+    p.hp = Math.min(p.maxHp, p.hp + pr.power * a.healFactor * suppressionAt(world, p.pos));
     if (owner) payEffectiveHeal(world, owner, p.hp - before);
   }
   // жжём + метим всех врагов в радиусе (по толстяку — потолок толщины §2)
@@ -267,9 +291,9 @@ function resolveHealProjectile(world, pr) {
     if (owner) owner.totalDamageDone += burn;
     if (hit.hp <= 0) killEnemy(world, hit, owner);
   } else {
-    // лечит D — платим ТОЛЬКО за эффективные HP (оверхил = 0, §5)
+    // лечит D — платим ТОЛЬКО за эффективные HP (оверхил = 0, §5). Глушитель давит хил (§3).
     const before = hit.hp;
-    hit.hp = Math.min(hit.maxHp, hit.hp + pr.power);
+    hit.hp = Math.min(hit.maxHp, hit.hp + pr.power * suppressionAt(world, hit.pos));
     const effective = hit.hp - before;
     if (owner) payEffectiveHeal(world, owner, effective);
   }

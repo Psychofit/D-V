@@ -49,6 +49,7 @@ export const CONFIG = {
       fat: { start: 0.18, weightMax: 0.5 },
       hunter: { start: 0.30, weightMax: 0.45 },
       ranged: { start: 0.40, weightMax: 0.6 },
+      suppressor: { start: 0.50, weightMax: 0.3 },
     },
   },
 
@@ -121,6 +122,25 @@ export const CONFIG = {
     speedDarkGain: 0.4,
     attackKind: 'ranged',
     targetPref: 'healer',    // целит V в его зоне
+  },
+
+  // --- Враг (пятый тип: ГЛУШИТЕЛЬ) (GDD §3) ---------------------------------
+  // Бьёт по самому ГЛАГОЛУ игры: в его зоне хил подавлен и снимаются метки V.
+  // Прямого урона почти нет — угроза в ауре: D в зоне глушителя не спасти хилом.
+  // Контрплей: сфокусить глушитель или увести бой из зоны. В тьме зона шире (§3).
+  enemySuppressor: {
+    hp: 70,
+    radius: 13,
+    speed: 46,
+    contactDamage: 0,        // не бьёт сам — угроза в подавлении
+    attackInterval: 1,
+    suppressRadius: 150,     // радиус зоны подавления хила / снятия меток
+    suppressRadiusDarkGain: 0.5, // в тьме зона шире: radius *= (1 + darkness * gain)
+    healSuppressFactor: 0.15,// хил в зоне *= это (почти ноль)
+    standoff: 120,           // держится на этой дистанции от цели (зоной накрывает бой)
+    damageDarkGain: 1, attackSpeedDarkGain: 0.5, speedDarkGain: 0.5,
+    attackKind: 'none',      // без прямой атаки
+    targetPref: 'nearest',   // ходит к гуще боя, чтобы накрыть зоной
   },
 
   // --- Метка V (GDD §2) -----------------------------------------------------
