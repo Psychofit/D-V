@@ -107,9 +107,26 @@ function dPulseEngage(world, d, enemy, dt) {
   if (dd <= pc.range + enemy.radius) pulseAttack(world, d, dir(d.pos, enemy.pos));
 }
 
+// Подопечный V: самый РАНЕНЫЙ D в зоне хила (фронтлайн-пульсер, что кровит), иначе ближайший.
+// Фокус на тех, кому хил нужен, держит танкующих пульсеров живыми (§2: доходный пациент).
+function pickWard(world, v) {
+  const range = world.cfg.V.shotRange;
+  let best = null, bestHp = Infinity, nearest = null, nd = Infinity;
+  for (const p of world.players) {
+    if (!p.alive || p.faction !== 'D') continue;
+    const d = dist(v.pos, p.pos);
+    if (d < nd) { nd = d; nearest = p; }
+    if (d <= range) {
+      const hpFrac = p.hp / p.maxHp;
+      if (hpFrac < bestHp) { bestHp = hpFrac; best = p; }
+    }
+  }
+  return best || nearest;
+}
+
 function vAI(world, v, dt) {
   const cfg = world.cfg.ai;
-  const ward = nearestAlly(world, v, 'D'); // подопечный D
+  const ward = pickWard(world, v); // приоритет — самый раненый D (фронтлайн), §2
   const enemy = nearestEnemy(world, v.pos);
 
   // --- Позиция на V-кромке (§2) ---

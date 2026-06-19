@@ -111,6 +111,99 @@ export function measureBuilds(baseCfg, opts = {}) {
   return rows;
 }
 
+// Ландшафт пейоффа БИЛДА D (выстрел vs Пульс) по доле пульсеров (§8/§10). Аналог
+// ландшафта фракций: возникает ли "премия за дефицит билда" — pulse доходнее, когда
+// пульсеров мало (команде нужен танк/AoE)? Если да → выбор билда сходится к миксу.
+export function measureBuildLandscape(baseCfg, opts = {}) {
+  const seconds = opts.sessionSeconds ?? baseCfg.meta.sessionSeconds;
+  const repeats = opts.repeats ?? 8;
+  const seed = opts.seed ?? 1;
+  const numD = opts.numD ?? 10, numV = opts.numV ?? 10;
+  const fractions = opts.fractions ?? [0.1, 0.25, 0.4, 0.55, 0.7, 0.85];
+
+  const rows = [];
+  for (const pf of fractions) {
+    let pI = 0, pN = 0, pA = 0, sI = 0, sN = 0, sA = 0, dark = 0;
+    for (let r = 0; r < repeats; r++) {
+      const cfg = withOverrides(baseCfg, { session: { numD, numV }, loadouts: { D: { pulseFraction: pf } } });
+      const world = createWorld(cfg, seed + Math.round(pf * 100) + r * 17);
+      const dt = cfg.world.dt;
+      while (world.running && world.time < seconds) stepWorld(world, dt);
+      dark += world.darkness;
+      for (const p of world.players) {
+        if (p.faction !== 'D') continue;
+        if (p.loadout.weapon === 'pulse') { pI += p.incomeTotal; pN++; pA += p.alive ? 1 : 0; }
+        else { sI += p.incomeTotal; sN++; sA += p.alive ? 1 : 0; }
+      }
+    }
+    const pulse = pI / Math.max(1, pN), shot = sI / Math.max(1, sN);
+    rows.push({
+      pf, pulseIncome: pulse, shotIncome: shot,
+      ratio: pulse / Math.max(1e-6, shot),
+      pulseAlive: pA / Math.max(1, pN), shotAlive: sA / Math.max(1, sN),
+      darkness: dark / repeats,
+    });
+  }
+  return rows;
+}
+
+// Один прогон с ТОЧНЫМ набором оружия D (массив weapons) → подушевой доход pulse/shot.
+function runSessionWithWeapons(baseCfg, weapons, numV, seed, seconds) {
+  const numD = weapons.length;
+  const cfg = withOverrides(baseCfg, { session: { numD, numV }, loadouts: { V: { areaFraction: 1 } } });
+  const world = createWorld(cfg, seed);
+  const ds = world.players.filter((p) => p.faction === 'D');
+  ds.forEach((p, i) => { p.loadout.weapon = weapons[i]; });   // переопределяем точно
+  const dt = cfg.world.dt;
+  while (world.running && world.time < seconds) stepWorld(world, dt);
+  let pI = 0, pN = 0, sI = 0, sN = 0;
+  for (const p of ds) {
+    if (p.loadout.weapon === 'pulse') { pI += p.incomeTotal; pN++; } else { sI += p.incomeTotal; sN++; }
+  }
+  return { payoffPulse: pI / Math.max(1, pN), payoffShot: sI / Math.max(1, sN), darkness: world.darkness };
+}
+
+function rechooseWeapon(weapons, payoffPulse, payoffShot, meta, rng) {
+  const aP = (Math.max(1e-6, payoffPulse) * meta.pulseAttract) ** meta.beta;
+  const aS = Math.max(1e-6, payoffShot) ** meta.beta;
+  const pPulse = aP / (aP + aS);
+  const next = weapons.slice();
+  for (let i = 0; i < next.length; i++) {
+    if (rng.next() > meta.switchFrac) continue;
+    next[i] = rng.next() < pPulse ? 'pulse' : 'shot';
+  }
+  if (!next.includes('pulse')) next[0] = 'pulse'; // ≥1 пульсер (иначе тёмный коллапс)
+  return next;
+}
+
+// Петля ВЫБОРА БИЛДА D (§8/§10): игроки между сессиями выбирают Пульс/Выстрел по доходу билда.
+// Сходится к здоровому миксу — или сваливается в all-shot (фрирайд)?
+export function runBuildDynamics(baseCfg, seed = 1) {
+  const meta = baseCfg.meta;
+  const rng = makeRng((seed ^ 0x1357) >>> 0);
+  const numD = 10, numV = 10;
+  let weapons = Array.from({ length: numD }, (_, i) => (i < numD / 2 ? 'pulse' : 'shot'));
+  const history = [];
+  for (let r = 0; r < meta.rounds; r++) {
+    const pf = weapons.filter((w) => w === 'pulse').length / numD;
+    const s = runSessionWithWeapons(baseCfg, weapons, numV, seed + r * 1009, meta.sessionSeconds);
+    history.push({ round: r, pf, payoffPulse: round(s.payoffPulse), payoffShot: round(s.payoffShot), darkness: round(s.darkness) });
+    weapons = rechooseWeapon(weapons, s.payoffPulse, s.payoffShot, meta, rng);
+  }
+  return { history, verdict: classifyBuild(history) };
+}
+
+export function classifyBuild(history) {
+  const f = history.map((h) => h.pf);
+  const tail = f.slice(Math.floor(f.length * 0.3));
+  const mean = avg(tail), lo = Math.min(...tail), hi = Math.max(...tail);
+  let label;
+  if (mean <= 0.15) label = 'COLLAPSE→all-shot';
+  else if (mean >= 0.85) label = 'COLLAPSE→all-pulse';
+  else label = 'MIX';
+  return { label, meanPf: round(mean), min: round(lo), max: round(hi) };
+}
+
 // Выбор фракции: правило Льюса по подушевому доходу + привлекательность V (§9) + рацио.
 function rechoose(factions, payoffD, payoffV, meta, rng) {
   const N = factions.length;

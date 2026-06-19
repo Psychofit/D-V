@@ -9,7 +9,9 @@
 // =============================================================================
 
 import { CONFIG, withOverrides } from '../src/config.js';
-import { measureLandscape, runDynamics, measureBuilds } from '../src/meta/factionMeta.js';
+import {
+  measureLandscape, runDynamics, measureBuilds, measureBuildLandscape, runBuildDynamics,
+} from '../src/meta/factionMeta.js';
 
 function parseArgs(argv) {
   const a = { mode: 'dynamics', seed: 1, series: 5, sets: [], splits: null };
@@ -18,7 +20,7 @@ function parseArgs(argv) {
     const m = rest[i].match(/^--([^=]+)(?:=(.*))?$/);
     if (!m) continue;
     const [, k, val] = m;
-    if (k === 'landscape' || k === 'dynamics' || k === 'builds') a.mode = k;
+    if (['landscape', 'dynamics', 'builds', 'buildscape', 'builddyn'].includes(k)) a.mode = k;
     else if (k === 'set') a.sets.push(val ?? rest[++i]);
     else if (k === 'splits') a.splits = (val ?? rest[++i]).split(',').map(Number);
     else if (k in a) a[k] = Number(val);
@@ -92,6 +94,48 @@ if (args.mode === 'landscape') {
     console.log('→ V/D пересекает 1 → есть точка равновесия → выбор может сходиться к балансу.');
   else
     console.log('→ V доходнее везде → коллапс в all-V.');
+} else if (args.mode === 'builddyn') {
+  // Петля выбора билда D (§8/§10): сходится к миксу или сваливается в all-shot?
+  const runs = [];
+  for (let i = 0; i < args.series; i++) runs.push(runBuildDynamics(cfg, args.seed + i));
+  console.log(`ВЫБОР БИЛДА D (Пульс/Выстрел): серий=${args.series} раундов=${cfg.meta.rounds} ` +
+    `β=${cfg.meta.beta} pulseAttract=${cfg.meta.pulseAttract} switch=${cfg.meta.switchFrac}`);
+  console.log('Шкала pf (доля Пульса): " " all-shot (0) → "@" all-pulse (1). Здоровый микс = середина.');
+  console.log('='.repeat(80));
+  const tally = {};
+  for (let i = 0; i < runs.length; i++) {
+    const { history, verdict } = runs[i];
+    tally[verdict.label] = (tally[verdict.label] || 0) + 1;
+    const last = history[history.length - 1];
+    console.log(`серия ${i + 1} | ${verdict.label.padEnd(17)} | pf→${(verdict.meanPf ?? 0).toFixed(2)} ` +
+      `| финал pulse=${Math.round(last.pf * 10)}/10 тьма=${last.darkness.toFixed(2)}`);
+    console.log('   pf │ ' + sparkFd(history.map((h) => ({ fD: h.pf }))));
+  }
+  console.log('='.repeat(80));
+  console.log('СВОДКА:');
+  for (const [label, n] of Object.entries(tally).sort((a, b) => b[1] - a[1]))
+    console.log(`  ${label.padEnd(18)} ${n}/${runs.length}`);
+  console.log('');
+  console.log('MIX = выбор билда сам держит смесь танков/дамагеров → сайдгрейд горизонтален (§8).');
+  console.log('COLLAPSE→all-shot = фрирайд побеждает → нужен сильнее пейофф пульсера / премия дефицита.');
+} else if (args.mode === 'buildscape') {
+  // Ландшафт пейоффа билда D (§8/§10): доходнее ли Пульс, когда пульсеров мало?
+  console.log('ЛАНДШАФТ билда D (выстрел vs Пульс): есть ли "премия за дефицит билда"?');
+  console.log(`10D/10V, сессия=${cfg.meta.sessionSeconds}с. pulse/shot>1 при дефиците пульсеров → выбор сойдётся.`);
+  console.log('='.repeat(80));
+  console.log('  доля pulse | доход pulse | доход shot | pulse/shot | выжив p/s  | тьма');
+  const rows = measureBuildLandscape(cfg, { seed: args.seed });
+  for (const r of rows) {
+    console.log(`  ${r.pf.toFixed(2).padStart(10)} | ${r.pulseIncome.toFixed(0).padStart(11)} | ` +
+      `${r.shotIncome.toFixed(0).padStart(10)} | ${r.ratio.toFixed(2).padStart(10)} | ` +
+      `${(r.pulseAlive * 100).toFixed(0)}%/${(r.shotAlive * 100).toFixed(0)}%`.padStart(10) + ` | ${r.darkness.toFixed(2)}`);
+  }
+  const lo = rows[0].ratio, hi = rows[rows.length - 1].ratio; // при малой доле pulse vs большой
+  console.log('='.repeat(80));
+  console.log(`pulse/shot при дефиците пульсеров=${lo.toFixed(2)}, при избытке=${hi.toFixed(2)}.`);
+  console.log(lo > 1 && lo > hi
+    ? '→ Премия за дефицит билда ЕСТЬ (Пульс ценен, когда редок) → выбор билда сойдётся к миксу.'
+    : '→ Премии нет: shot выгоднее даже при дефиците пульсеров → выбор сваливает в all-shot (как было с фракцией).');
 } else if (args.mode === 'builds') {
   // Горизонтальность сайдгрейдов (§8): мешаем билды 50/50 (user --set перебивает),
   // меряем подушевой доход и выживаемость по билдам. Доминирующий билд = нарушение §8.
