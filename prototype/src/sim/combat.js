@@ -20,7 +20,7 @@ export function fireProjectile(world, player, aimDir) {
 
   const cfg = world.cfg[player.faction];
   const isD = player.faction === 'D';
-  const area = !isD && cfg.areaHeal;            // V с прокачкой в площадь (§2)
+  const area = !isD && player.loadout.heal === 'area'; // билд V: площадь vs одноцель (§2/§8)
   const muzzle = add(player.pos, scale(d, player.radius + cfg.projectileRadius + 1));
 
   world.projectiles.push(makeProjectile(world, {
@@ -79,7 +79,7 @@ export function pickEnemyTarget(world, enemy) {
     // провокатор перебивает цель: тянет охотника/дальнобоя на себя (защита V)
     const R = world.cfg.D.aggro.radius;
     for (const p of world.players) {
-      if (!p.alive || !p.provoker) continue;
+      if (!p.alive || !p.loadout.provoker) continue;
       const d = dist(enemy.pos, p.pos);
       if (d <= R && d < bd) { bd = d; best = p; }
     }

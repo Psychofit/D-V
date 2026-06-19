@@ -31,7 +31,9 @@ export function makePlayer(world, faction, pos) {
     kills: 0,
     alive: true,
     controlled: false,       // захвачен человеком (браузер)
-    provoker: false,         // взял аггро-роль §7 (стягивает V-целящих врагов на себя)
+    // Билд игрока (§8): сайдгрейды, выбранные до старта. Назначается в world по распределению.
+    //   D: { weapon: 'pulse'|'shot', provoker: bool }   V: { heal: 'area'|'single' }
+    loadout: faction === 'D' ? { weapon: 'pulse', provoker: false } : { heal: 'area' },
     aim: { x: 1, y: 0 },     // направление прицела (для управляемого режима)
     wantShoot: false,
     pulseFx: null,           // транзиентный след пульса D (для рендера)

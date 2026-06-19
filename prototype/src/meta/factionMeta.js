@@ -75,6 +75,42 @@ export function measureLandscape(baseCfg, opts = {}) {
   return rows;
 }
 
+// Ключ билда игрока (§8): что за сайдгрейды он принёс.
+function buildKey(p) {
+  if (p.faction === 'D') return `D ${p.loadout.weapon}${p.loadout.provoker ? '+агро' : ''}`;
+  return `V ${p.loadout.heal}`;
+}
+
+// Горизонтальность сайдгрейдов (§8): подушевой доход и выживаемость по билдам в СМЕШАННЫХ
+// сессиях. Если внутри фракции какой-то билд доходнее/живучее прочих — он "лучший", а не
+// "иной" (нарушение §8: все взяли бы его → перекос каната). Прогоняется на миксе билдов.
+export function measureBuilds(baseCfg, opts = {}) {
+  const seconds = opts.sessionSeconds ?? baseCfg.meta.sessionSeconds;
+  const repeats = opts.repeats ?? 8;
+  const seed = opts.seed ?? 1;
+  const numD = opts.numD ?? 10, numV = opts.numV ?? 10;
+
+  const acc = {};
+  for (let r = 0; r < repeats; r++) {
+    const cfg = withOverrides(baseCfg, { session: { numD, numV } });
+    const world = createWorld(cfg, seed + r * 17);
+    const dt = cfg.world.dt;
+    while (world.running && world.time < seconds) stepWorld(world, dt);
+    for (const p of world.players) {
+      const k = buildKey(p);
+      const a = acc[k] || (acc[k] = { faction: p.faction, income: 0, heal: 0, n: 0, alive: 0 });
+      a.income += p.incomeTotal; a.heal += p.incomeHeal; a.n++; a.alive += p.alive ? 1 : 0;
+    }
+  }
+  const rows = Object.entries(acc).map(([build, a]) => ({
+    build, faction: a.faction, n: a.n,
+    income: a.income / a.n, alive: a.alive / a.n,
+    healShare: a.heal / Math.max(1e-6, a.income),
+  }));
+  rows.sort((x, y) => (x.faction === y.faction ? y.income - x.income : x.faction < y.faction ? -1 : 1));
+  return rows;
+}
+
 // Выбор фракции: правило Льюса по подушевому доходу + привлекательность V (§9) + рацио.
 function rechoose(factions, payoffD, payoffV, meta, rng) {
   const N = factions.length;

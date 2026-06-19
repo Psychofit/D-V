@@ -78,7 +78,7 @@ function dAI(world, d, dt) {
     // жизнь в чужих руках — жмёмся к V (§1: у D нет кнопки спасения)
     setMove(d, dir(d.pos, medic.pos), dt);
   } else if (enemy) {
-    if (world.cfg.D.weapon === 'pulse') dPulseEngage(world, d, enemy, dt);
+    if (d.loadout.weapon === 'pulse') dPulseEngage(world, d, enemy, dt);
     else dShotEngage(world, d, enemy, dt);
   } else {
     d.vel = { x: 0, y: 0 };

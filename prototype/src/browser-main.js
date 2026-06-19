@@ -57,7 +57,7 @@ function applyInput() {
   if (mouse.down) {
     const aim = { x: mouse.x - p.pos.x, y: mouse.y - p.pos.y };
     if (aim.x || aim.y) {
-      if (p.faction === 'D' && cfg.D.weapon === 'pulse') pulseAttack(world, p, aim);
+      if (p.faction === 'D' && p.loadout.weapon === 'pulse') pulseAttack(world, p, aim);
       else fireProjectile(world, p, aim);
     }
   }

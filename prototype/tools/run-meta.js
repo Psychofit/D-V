@@ -9,7 +9,7 @@
 // =============================================================================
 
 import { CONFIG, withOverrides } from '../src/config.js';
-import { measureLandscape, runDynamics } from '../src/meta/factionMeta.js';
+import { measureLandscape, runDynamics, measureBuilds } from '../src/meta/factionMeta.js';
 
 function parseArgs(argv) {
   const a = { mode: 'dynamics', seed: 1, series: 5, sets: [], splits: null };
@@ -18,7 +18,7 @@ function parseArgs(argv) {
     const m = rest[i].match(/^--([^=]+)(?:=(.*))?$/);
     if (!m) continue;
     const [, k, val] = m;
-    if (k === 'landscape' || k === 'dynamics') a.mode = k;
+    if (k === 'landscape' || k === 'dynamics' || k === 'builds') a.mode = k;
     else if (k === 'set') a.sets.push(val ?? rest[++i]);
     else if (k === 'splits') a.splits = (val ?? rest[++i]).split(',').map(Number);
     else if (k in a) a[k] = Number(val);
@@ -57,7 +57,8 @@ function sparkFd(history, width = 60) {
 }
 
 const args = parseArgs(process.argv);
-const cfg = withOverrides(CONFIG, buildOverrides(args.sets));
+const overrides = buildOverrides(args.sets);
+const cfg = withOverrides(CONFIG, overrides);
 
 console.log('='.repeat(80));
 console.log('D / V — петля выбора фракции между сессиями (GDD §5, §7, §9, §10).');
@@ -91,6 +92,30 @@ if (args.mode === 'landscape') {
     console.log('→ V/D пересекает 1 → есть точка равновесия → выбор может сходиться к балансу.');
   else
     console.log('→ V доходнее везде → коллапс в all-V.');
+} else if (args.mode === 'builds') {
+  // Горизонтальность сайдгрейдов (§8): мешаем билды 50/50 (user --set перебивает),
+  // меряем подушевой доход и выживаемость по билдам. Доминирующий билд = нарушение §8.
+  const mixDefault = { loadouts: { D: { pulseFraction: 0.5, provokerFraction: 0.5 }, V: { areaFraction: 0.5 } } };
+  const buildCfg = withOverrides(withOverrides(CONFIG, mixDefault), overrides);
+  console.log('ГОРИЗОНТАЛЬНОСТЬ билдов §8: доминирует ли какой-то сайдгрейд?');
+  console.log(`микс билдов 50/50, сессия=${buildCfg.meta.sessionSeconds}с`);
+  console.log('='.repeat(80));
+  console.log('  билд                | подуш.доход | выжив. | V:хил%');
+  const rows = measureBuilds(buildCfg, { seed: args.seed });
+  for (const r of rows) {
+    console.log(`  ${r.build.padEnd(20)}| ${r.income.toFixed(1).padStart(11)} | ` +
+      `${(r.alive * 100).toFixed(0).padStart(5)}% | ${r.faction === 'V' ? (r.healShare * 100).toFixed(0) + '%' : '—'}`);
+  }
+  console.log('='.repeat(80));
+  for (const fac of ['D', 'V']) {
+    const fr = rows.filter((r) => r.faction === fac);
+    if (fr.length < 2) continue;
+    const inc = fr.map((r) => r.income);
+    const ratio = Math.max(...inc) / Math.max(1e-6, Math.min(...inc));
+    const top = fr.reduce((a, b) => (b.income > a.income ? b : a));
+    console.log(`  ${fac}: разброс дохода ×${ratio.toFixed(2)} (лидер: ${top.build}). ` +
+      (ratio < 1.6 ? 'ГОРИЗОНТАЛЬНО (§8 ок).' : 'билд доминирует → проверить §8.'));
+  }
 } else {
   const runs = [];
   for (let i = 0; i < args.series; i++) runs.push(runDynamics(cfg, args.seed + i));
