@@ -109,14 +109,16 @@ function killPlayer(world, p) {
 }
 
 // Глушитель (§3): множитель хила в точке (1 вне зон; healSuppressFactor в зоне). В тьме зона шире.
-function suppressionAt(world, pos) {
+// resist ∈ [0,1] — насколько ветка хила ПРОБИВАЕТ подавление: 0 = давится полностью (площадь),
+// →1 = почти иммунна (точечный одноцель, §3 ниша). resist тянет множитель к 1.
+function suppressionAt(world, pos, resist = 0) {
   let factor = 1;
   for (const e of world.enemies) {
     if (!e.alive || e.type !== 'suppressor') continue;
     const r = e.suppressRadius * (1 + world.darkness * e.suppressRadiusDarkGain);
     if (dist(pos, e.pos) <= r) factor = Math.min(factor, e.healSuppressFactor);
   }
-  return factor;
+  return factor + (1 - factor) * resist;
 }
 
 // Глушитель снимает метки V с врагов в своей зоне (§3) — бьёт по глаголу игры.
@@ -277,7 +279,8 @@ function resolveHealProjectile(world, pr) {
   const owner = world.findPlayer(pr.ownerId);
   pr.alive = false;
   const before = hit.hp;
-  hit.hp = Math.min(hit.maxHp, hit.hp + pr.power * suppressionAt(world, hit.pos)); // глушитель давит §3
+  // одноцель ПРОБИВАЕТ зону глушителя (§3 ниша одиночки)
+  hit.hp = Math.min(hit.maxHp, hit.hp + pr.power * suppressionAt(world, hit.pos, world.cfg.V.singleSuppressResist));
   if (owner) payEffectiveHeal(world, owner, hit.hp - before);
 }
 
