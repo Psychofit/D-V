@@ -71,27 +71,87 @@ export function updateCooldowns(world, dt) {
   for (const e of world.enemies) if (e.attackCooldown > 0) e.attackCooldown -= dt;
 }
 
-// Враги бьют в упор. Тьма делает удары больнее и чаще (§3). Статы — по типу врага.
+// Выбор цели врагом (§3): охотник/дальнобой целят ХИЛЕРА (V), остальные — ближайшего.
+// Аггро-нода §7: провокатор-D в радиусе провокации перехватывает V-целящего врага на себя.
+export function pickEnemyTarget(world, enemy) {
+  let best = null, bd = Infinity;
+  if (enemy.targetPref === 'healer') {
+    // провокатор перебивает цель: тянет охотника/дальнобоя на себя (защита V)
+    const R = world.cfg.D.aggro.radius;
+    for (const p of world.players) {
+      if (!p.alive || !p.provoker) continue;
+      const d = dist(enemy.pos, p.pos);
+      if (d <= R && d < bd) { bd = d; best = p; }
+    }
+    if (best) return best;
+    // иначе — ближайший V
+    bd = Infinity;
+    for (const p of world.players) {
+      if (!p.alive || p.faction !== 'V') continue;
+      const d = dist(enemy.pos, p.pos);
+      if (d < bd) { bd = d; best = p; }
+    }
+    if (best) return best;
+  }
+  bd = Infinity;
+  for (const p of world.players) {
+    if (!p.alive) continue;
+    const d = dist(enemy.pos, p.pos);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+
+function killPlayer(world, p) {
+  p.hp = 0; p.alive = false;
+  world.events.push({ t: world.time, type: 'death', faction: p.faction, id: p.id });
+}
+
+// Атаки врагов. Тьма делает удары больнее и чаще (§3). Ближний бьёт в упор; дальнобой
+// шлёт снаряд по цели из своей зоны (в тьме чаще/больнее → сжимает V-кромку §3).
 export function updateEnemyAttacks(world, dt) {
   for (const e of world.enemies) {
     if (!e.alive || e.attackCooldown > 0) continue;
+    const target = pickEnemyTarget(world, e);
+    if (!target) continue;
     const dmgMul = 1 + world.darkness * e.damageDarkGain;
     const spdMul = 1 + world.darkness * e.attackSpeedDarkGain;
-    // ближайший живой игрок в зоне удара
-    let target = null, best = Infinity;
-    for (const p of world.players) {
-      if (!p.alive) continue;
-      const dd = dist(e.pos, p.pos);
-      if (dd < best) { best = dd; target = p; }
-    }
-    if (target && best <= e.radius + target.radius + e.attackRange) {
+    const d = dist(e.pos, target.pos);
+
+    if (e.attackKind === 'ranged') {
+      if (d <= e.fireRange) {
+        fireEnemyProjectile(world, e, target, dmgMul);
+        e.attackCooldown = e.attackInterval / spdMul;
+      }
+    } else if (d <= e.radius + target.radius + e.attackRange) {
       target.hp -= e.contactDamage * dmgMul;
       e.attackCooldown = e.attackInterval / spdMul;
-      if (target.hp <= 0) {
-        target.hp = 0;
-        target.alive = false;
-        world.events.push({ t: world.time, type: 'death', faction: target.faction, id: target.id });
-      }
+      if (target.hp <= 0) killPlayer(world, target);
+    }
+  }
+}
+
+function fireEnemyProjectile(world, enemy, target, dmgMul) {
+  const d = norm(sub(target.pos, enemy.pos));
+  world.projectiles.push(makeProjectile(world, {
+    faction: 'enemy', effect: 'enemyShot', ownerId: enemy.id,
+    pos: add(enemy.pos, scale(d, enemy.radius + enemy.projectileRadius + 1)),
+    vel: scale(d, enemy.projectileSpeed),
+    power: enemy.contactDamage * dmgMul,   // интенсивность тьмы вшита в момент выстрела
+    radius: enemy.projectileRadius,
+    range: enemy.fireRange * 1.3,
+  }));
+}
+
+// Вражеский снаряд бьёт ПЕРВОГО задетого игрока (D может перехватить телом — защита V).
+function resolveEnemyProjectile(world, pr) {
+  for (const p of world.players) {
+    if (!p.alive) continue;
+    if (dist(pr.pos, p.pos) <= pr.radius + p.radius) {
+      p.hp -= pr.power;
+      pr.alive = false;
+      if (p.hp <= 0) killPlayer(world, p);
+      return;
     }
   }
 }
@@ -106,6 +166,7 @@ export function updateProjectiles(world, dt) {
     if (pr.effect === 'area') { updateAreaProjectile(world, pr); continue; }
     if (pr.traveled >= pr.range) { pr.alive = false; continue; }
     if (pr.effect === 'damage') resolveDamageProjectile(world, pr);
+    else if (pr.effect === 'enemyShot') resolveEnemyProjectile(world, pr);
     else resolveHealProjectile(world, pr);
   }
 }

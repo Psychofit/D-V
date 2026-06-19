@@ -48,15 +48,16 @@ export function createRenderer(canvas) {
     ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10);
     ctx.stroke();
 
-    // снаряды
+    // снаряды: D-урон жёлтый, V-хил/площадь зелёный, вражеский — красный (входящая угроза)
     for (const pr of world.projectiles) {
-      disc(pr.pos.x, pr.pos.y, pr.radius,
-        pr.effect === 'damage' ? '#ffd23f' : '#52ffb8', null);
+      const c = pr.effect === 'damage' ? '#ffd23f' : pr.effect === 'enemyShot' ? '#ff5566' : '#52ffb8';
+      disc(pr.pos.x, pr.pos.y, pr.radius, c, null);
     }
 
-    // враги (толстяк §2 — крупнее и иного цвета)
+    // враги: цвет по типу (§3). рой/толстяк/охотник/дальнобой
+    const enemyColor = { swarm: '#3a3a44', fat: '#6e2f42', hunter: '#d9863b', ranged: '#5a59b0' };
     for (const e of world.enemies) {
-      disc(e.pos.x, e.pos.y, e.radius, e.type === 'fat' ? '#6e2f42' : '#3a3a44', '#000');
+      disc(e.pos.x, e.pos.y, e.radius, enemyColor[e.type] || '#3a3a44', '#000');
       if (e.markedUntil > world.time) {            // метка V (§2): D бьёт сильнее
         ctx.beginPath();
         ctx.arc(e.pos.x, e.pos.y, e.radius + 3, 0, Math.PI * 2);
@@ -95,6 +96,11 @@ export function createRenderer(canvas) {
       }
       const fill = p.faction === 'D' ? '#e5484d' : '#3e9bff';
       disc(p.pos.x, p.pos.y, p.radius, fill, p.controlled ? '#fff' : '#0008');
+      if (p.provoker) {                         // аггро-роль §7 — оранжевое кольцо
+        ctx.beginPath();
+        ctx.arc(p.pos.x, p.pos.y, p.radius + 7, 0, Math.PI * 2);
+        ctx.lineWidth = 1.5; ctx.strokeStyle = '#d9863b'; ctx.stroke();
+      }
       hpRing(p);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px monospace';

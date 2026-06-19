@@ -25,17 +25,27 @@ export function updateSpawner(world, dt) {
   const interval = s.baseInterval / ((1 + s.intervalSessionGain * progress) * crowd);
   world.spawnTimer = interval;
 
-  // доля толстяков растёт с прогрессом сессии (ось "состав" §3), с порога fatStartProgress
-  const fatChance = progress < s.fatStartProgress ? 0 :
-    s.fatChanceMax * (progress - s.fatStartProgress) / (1 - s.fatStartProgress);
-
   const cx = world.cfg.world.width / 2;
   const cy = world.cfg.world.height / 2;
   for (let i = 0; i < s.burst; i++) {
     const off = world.rng.unit();
     const r = world.rng.range(0, s.centerJitter);
-    const type = world.rng.next() < fatChance ? 'fat' : 'swarm';
+    const type = pickType(world, progress);
+    world.stats.spawnedByType[type] = (world.stats.spawnedByType[type] || 0) + 1;
     if (type === 'fat') world.stats.fatSpawned++;
     world.enemies.push(makeEnemy(world, { x: cx + off.x * r, y: cy + off.y * r }, type));
   }
+}
+
+// Состав (§3): вес типа рампится от 0 (до порога прогресса) до weightMax; рой — базовый вес 1.
+function pickType(world, progress) {
+  const ramp = (m) => (progress < m.start ? 0 : m.weightMax * (progress - m.start) / (1 - m.start));
+  const mix = world.cfg.spawn.mix;
+  const weights = { swarm: 1, fat: ramp(mix.fat), hunter: ramp(mix.hunter), ranged: ramp(mix.ranged) };
+  const total = weights.swarm + weights.fat + weights.hunter + weights.ranged;
+  let roll = world.rng.next() * total;
+  for (const type of ['fat', 'hunter', 'ranged']) {
+    if ((roll -= weights[type]) < 0) return type;
+  }
+  return 'swarm';
 }

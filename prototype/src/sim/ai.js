@@ -11,7 +11,7 @@
 // =============================================================================
 
 import { add, sub, scale, norm, dist, dir } from '../core/vec2.js';
-import { fireProjectile, pulseAttack } from './combat.js';
+import { fireProjectile, pulseAttack, pickEnemyTarget } from './combat.js';
 import { canBuyNode, buyNode } from './economy.js';
 
 function nearestEnemy(world, pos, type = null) {
@@ -50,16 +50,21 @@ export function updateAI(world, dt) {
 }
 
 function enemyAI(world, e) {
-  let target = null, bd = Infinity;
-  for (const p of world.players) {
-    if (!p.alive) continue;
-    const d = dist(e.pos, p.pos);
-    if (d < bd) { bd = d; target = p; }
-  }
+  const target = pickEnemyTarget(world, e); // охотник/дальнобой → V, прочие → ближайший (§3)
   if (!target) { e.vel = { x: 0, y: 0 }; return; }
   // тьма ускоряет врага → он догоняет кайтящего D (§3, замыкает канат)
   const speed = e.speed * (1 + world.darkness * e.speedDarkGain);
-  e.vel = scale(dir(e.pos, target.pos), speed);
+
+  if (e.attackKind === 'ranged') {
+    // держит дистанцию ~80% дальности стрельбы: достаёт V, но не лезет в ближний бой
+    const d = dist(e.pos, target.pos);
+    const want = e.fireRange * 0.8;
+    if (d > want * 1.1) e.vel = scale(dir(e.pos, target.pos), speed);       // подойти на дистанцию
+    else if (d < want * 0.7) e.vel = scale(dir(target.pos, e.pos), speed);  // отойти (кайт от клинча)
+    else e.vel = { x: 0, y: 0 };
+  } else {
+    e.vel = scale(dir(e.pos, target.pos), speed);                            // ближний/охотник — на цель
+  }
 }
 
 function dAI(world, d, dt) {
