@@ -29,6 +29,7 @@ export function makePlayer(world, faction, pos) {
     totalHealDone: 0,        // эффективный хил (только V)
     totalDamageDone: 0,
     kills: 0,
+    fatKills: 0,             // убитых толстяков (триггер ачивки §8)
     alive: true,
     controlled: false,       // захвачен человеком (браузер)
     // Билд игрока (§8): сайдгрейды, выбранные до старта. Назначается в world по распределению.

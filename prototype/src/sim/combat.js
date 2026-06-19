@@ -241,7 +241,10 @@ function detonateArea(world, pr) {
 // Общая смерть врага: пометить, посчитать толстяков, заплатить добившему.
 function killEnemy(world, enemy, killer) {
   enemy.alive = false;
-  if (enemy.type === 'fat') world.stats.fatKilled++;
+  if (enemy.type === 'fat') {
+    world.stats.fatKilled++;
+    if (killer && killer.kind === 'player') killer.fatKills++; // на игрока (ачивка §8)
+  }
   payKill(world, killer); // валюта добившему (§4, §5)
 }
 

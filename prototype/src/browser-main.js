@@ -10,6 +10,10 @@ import { fireProjectile, pulseAttack } from './sim/combat.js';
 import { createRenderer } from './render/renderer.js';
 import { createHud } from './render/hud.js';
 import { createRecorder } from './telemetry/recorder.js';
+import {
+  ACHIEVEMENTS, availableBuilds, loadProgress, saveProgress, resetProgress,
+  checkNewAchievements, applyAchievement,
+} from './progression/achievements.js';
 
 const cfg = structuredClone(CONFIG); // локальная глубокая копия (тумблеры живые, общий CONFIG не трогаем)
 const canvas = document.getElementById('game');
@@ -91,6 +95,109 @@ document.getElementById('chk-responsive')?.addEventListener('change', (e) => {
   cfg.ai.dDarkStopAt = e.target.checked ? 0.6 : 2.0; // живой тумблер отзывчивого D (§10)
 });
 
+// --- меню билда и ачивки (§8) -----------------------------------------------
+let progress = loadProgress();
+const human = { faction: 'D', weapon: 'shot', provoker: false, heal: 'area' };
+const overlay = document.getElementById('menu-overlay');
+
+function fixHumanBuild() {
+  const av = availableBuilds(human.faction, progress);
+  if (human.faction === 'D') {
+    if (!av.weapons.includes(human.weapon)) human.weapon = 'shot';
+    if (!av.canAggro) human.provoker = false;
+  } else if (!av.heals.includes(human.heal)) human.heal = 'area';
+}
+
+function chip(cls, sel, locked, label, sub, data) {
+  return `<div class="chip ${cls} ${sel ? 'sel' : ''} ${locked ? 'locked' : ''}" ${data}>` +
+    `${label}${locked ? ' 🔒' : ''}<small>${sub}</small></div>`;
+}
+
+function renderMenu() {
+  fixHumanBuild();
+  const av = availableBuilds(human.faction, progress);
+  const isD = human.faction === 'D';
+  let html = `<div class="menu-row"><div class="lbl">Фракция (раздельные пулы ачивок §8)</div><div class="tabs">` +
+    chip('D', isD, false, 'D — уничтожать', 'высокий урон, жизнь в руках V', 'data-fac="D"') +
+    chip('', !isD, false, 'V — спасать', 'хил-экономика, легче на старте §9', 'data-fac="V"') + `</div></div>`;
+
+  if (isD) {
+    html += `<div class="menu-row"><div class="lbl">Оружие</div><div class="chips">` +
+      chip('D', human.weapon === 'shot', false, 'Выстрел', 'дальний, безопасный', 'data-w="shot"') +
+      chip('D', human.weapon === 'pulse', !av.weapons.includes('pulse'), 'Пульс', 'конус в упор, риск', 'data-w="pulse"') +
+      `</div></div>`;
+    html += `<div class="menu-row"><div class="lbl">Роль</div><div class="chips">` +
+      chip('D', !human.provoker, false, 'Дамагер', 'чистый урон', 'data-ag="0"') +
+      chip('D', human.provoker, !av.canAggro, 'Провокатор', 'стягивает врагов с V (аггро §7)', 'data-ag="1"') +
+      `</div></div>`;
+  } else {
+    html += `<div class="menu-row"><div class="lbl">Ветка хила</div><div class="chips">` +
+      chip('', human.heal === 'area', false, 'Площадь', 'охват, вблизи (надёжно)', 'data-h="area"') +
+      chip('', human.heal === 'single', !av.heals.includes('single'), 'Одноцель', 'точный, далеко, пробивает глушитель', 'data-h="single"') +
+      `</div></div>`;
+  }
+
+  html += `<div class="menu-row"><div class="lbl">Достижения ${human.faction} (по навыку, без гринда §8)</div><div class="ach-list">` +
+    ACHIEVEMENTS.filter((a) => a.faction === human.faction).map((a) => {
+      const done = progress.achieved.includes(a.id);
+      return `<div class="ach ${done ? 'done' : ''}"><span class="mk">${done ? '✓' : '·'}</span>` +
+        `<span class="t">${a.title}</span><span class="d">${a.desc}</span>` +
+        `${a.unlocks ? `<span class="u">→ ${a.unlocks}</span>` : ''}</div>`;
+    }).join('') + `</div></div>`;
+
+  const el = document.getElementById('menu-content');
+  el.innerHTML = html;
+  el.querySelectorAll('.chip').forEach((c) => {
+    if (c.classList.contains('locked')) return;
+    c.onclick = () => {
+      if (c.dataset.fac) human.faction = c.dataset.fac;
+      else if (c.dataset.w) human.weapon = c.dataset.w;
+      else if (c.dataset.ag) human.provoker = c.dataset.ag === '1';
+      else if (c.dataset.h) human.heal = c.dataset.h;
+      renderMenu();
+    };
+  });
+}
+
+function openMenu() { paused = true; overlay.style.display = 'flex'; renderMenu(); }
+
+function applyHumanBuild() {
+  possessed = human.faction;
+  const p = world.players.find((pl) => pl.faction === human.faction && pl.alive);
+  if (!p) return;
+  if (human.faction === 'D') { p.loadout.weapon = human.weapon; p.loadout.provoker = human.provoker; }
+  else p.loadout.heal = human.heal;
+}
+
+function startGame() {
+  overlay.style.display = 'none';
+  reset();
+  applyHumanBuild();
+  paused = false;
+}
+
+function toast(a) {
+  const c = document.getElementById('toasts');
+  const d = document.createElement('div');
+  d.className = 'toast';
+  d.innerHTML = `<b>🏆 ${a.title}</b><small>${a.desc}${a.unlocks ? ` — открыто: ${a.unlocks}` : ''}</small>`;
+  c.appendChild(d);
+  setTimeout(() => d.remove(), 5000);
+}
+
+function trackAchievements() {
+  const p = controlledPlayer();
+  if (!p) return;
+  const newly = checkNewAchievements(p, p.faction, progress);
+  if (!newly.length) return;
+  for (const a of newly) { applyAchievement(a, progress); toast(a); }
+  saveProgress(progress);
+}
+
+bind('btn-menu', openMenu);
+bind('btn-start', startGame);
+bind('btn-reset-progress', () => { progress = resetProgress(); renderMenu(); });
+
 // --- цикл с фиксированным шагом ---------------------------------------------
 const dt = cfg.world.dt;
 let acc = 0, prev = performance.now();
@@ -106,9 +213,11 @@ function frame(now) {
       recorder.maybeSample(world);
       acc -= dt; steps++;
     }
+    trackAchievements(); // §8: засчитать достижения игрока, открыть сайдгрейды
   }
   renderer.draw(world);
   hud.update(world, recorder);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+openMenu(); // старт — экран выбора билда (§8)
