@@ -85,6 +85,98 @@ export function createRenderer(canvas) {
     ctx.stroke();
   }
 
+  // --- твари тьмы: силуэт по типу (роль читается формой) -------------------
+  // Рой массовый → дёшево (без градиентов); редкие крупные типы — богаче.
+  // Анимация: фаза по e.id, ориентация по e.vel; в тьме кромки/ядра ярче (§3).
+  function polyTo(pts) {
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i++) i ? ctx.lineTo(pts[i][0], pts[i][1]) : ctx.moveTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+  }
+
+  function drawSwarm(e, d, t) {            // осколок роя: мелкий, гранёный, вертится
+    const r = e.radius;
+    ctx.save(); ctx.translate(e.pos.x, e.pos.y); ctx.rotate(t * 1.3 + e.id);
+    const pts = [];
+    for (let i = 0; i < 6; i++) { const an = i * Math.PI / 3, rad = i % 2 ? r * 0.45 : r * 1.15; pts.push([Math.cos(an) * rad, Math.sin(an) * rad]); }
+    polyTo(pts);
+    ctx.fillStyle = '#2b2b36'; ctx.fill();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = `rgba(150,150,205,${0.3 + d * 0.45})`; ctx.stroke();
+    disc(0, 0, r * 0.26, `rgba(180,180,225,${0.4 + d * 0.45})`, null);
+    ctx.restore();
+  }
+
+  function drawFat(e, d, t) {              // бронированный исполин: гранёная туша, раскалённая трещина, дышит
+    const r = e.radius * (1 + Math.sin(t * 1.6 + e.id) * 0.03);
+    ctx.save(); ctx.translate(e.pos.x, e.pos.y);
+    const pts = [];
+    for (let i = 0; i < 8; i++) { const an = Math.PI / 8 + i * Math.PI / 4; pts.push([Math.cos(an) * r, Math.sin(an) * r]); }
+    polyTo(pts);
+    const g = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
+    g.addColorStop(0, '#7a2236'); g.addColorStop(1, '#37121d');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#190a0f'; ctx.stroke();
+    ctx.lineWidth = 1.3; ctx.strokeStyle = 'rgba(18,8,12,0.7)';   // бронешвы
+    for (let i = 0; i < 4; i++) { const an = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(an) * r * 0.34, Math.sin(an) * r * 0.34); ctx.lineTo(Math.cos(an) * r, Math.sin(an) * r); ctx.stroke(); }
+    const ca = 0.4 + d * 0.5 + Math.sin(t * 1.6 + e.id) * 0.12;   // ядро пышет в тьме
+    const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.55);
+    cg.addColorStop(0, `rgba(255,150,90,${ca})`); cg.addColorStop(1, 'rgba(255,90,60,0)');
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHunter(e, d) {              // клин-охотник: стреловидный, по вектору рывка, со смазкой
+    const sp = Math.hypot(e.vel.x, e.vel.y), r = e.radius;
+    ctx.save(); ctx.translate(e.pos.x, e.pos.y); ctx.rotate(sp > 1 ? Math.atan2(e.vel.y, e.vel.x) : 0);
+    if (sp > 1) {                                    // хвост-смазка по ходу
+      const lg = ctx.createLinearGradient(0, 0, -r * 2.6, 0);
+      lg.addColorStop(0, `rgba(224,150,74,${0.35 + d * 0.2})`); lg.addColorStop(1, 'rgba(224,150,74,0)');
+      ctx.fillStyle = lg; polyTo([[-r * 0.2, -r * 0.5], [-r * 2.6, 0], [-r * 0.2, r * 0.5]]); ctx.fill();
+    }
+    polyTo([[r * 1.45, 0], [-r * 0.6, -r * 0.95], [-r * 0.1, 0], [-r * 0.6, r * 0.95]]); // ласточкин хвост
+    ctx.fillStyle = '#251a10'; ctx.fill();
+    ctx.lineWidth = 1.6; ctx.strokeStyle = `rgba(232,152,72,${0.6 + d * 0.4})`; ctx.stroke();
+    disc(r * 0.45, 0, r * 0.2, `rgba(255,185,95,${0.7 + d * 0.3})`, null); // горящий глаз у острия
+    ctx.restore();
+  }
+
+  function drawRanged(e, d, t, world) {    // глаз-дальнобой: парящее око; зрачок смотрит на жертву и разгорается перед выстрелом
+    const tgt = e.targetId != null ? world.players.find((p) => p.id === e.targetId) : null;
+    const lx = tgt ? tgt.pos.x - e.pos.x : e.vel.x, ly = tgt ? tgt.pos.y - e.pos.y : e.vel.y;
+    const r = e.radius;
+    ctx.save(); ctx.translate(e.pos.x, e.pos.y); ctx.rotate(Math.atan2(ly, lx) || 0);
+    ctx.beginPath();                                 // миндалевидное веко
+    ctx.moveTo(-r * 1.45, 0); ctx.quadraticCurveTo(0, -r * 1.05, r * 1.45, 0); ctx.quadraticCurveTo(0, r * 1.05, -r * 1.45, 0); ctx.closePath();
+    ctx.fillStyle = '#1b1b30'; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = `rgba(120,118,205,${0.5 + d * 0.4})`; ctx.stroke();
+    const ready = 1 - Math.min(1, e.attackCooldown / 0.5); // ~0.5с разгорания перед выстрелом
+    disc(r * 0.5, 0, r * 0.5, 'rgba(140,130,255,0.22)', null);
+    disc(r * 0.55, 0, r * 0.3, `rgba(195,175,255,${0.55 + ready * 0.45})`, null);
+    ctx.restore();
+  }
+
+  function drawSuppressor(e, d, t) {       // глушащая клякса: аморфная, пульсирует, ядро-пустота гасит свет
+    const r = e.radius * (1 + Math.sin(t * 2 + e.id) * 0.05), N = 16;
+    ctx.save(); ctx.translate(e.pos.x, e.pos.y);
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const an = i / N * Math.PI * 2;
+      const rr = r * (1 + 0.16 * Math.sin(an * 3 + t * 2 + e.id) + 0.08 * Math.sin(an * 5 - t * 1.3));
+      i ? ctx.lineTo(Math.cos(an) * rr, Math.sin(an) * rr) : ctx.moveTo(Math.cos(an) * rr, Math.sin(an) * rr);
+    }
+    ctx.closePath();
+    const g = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 1.2);
+    g.addColorStop(0, '#5e2160'); g.addColorStop(1, '#2a1030');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = `rgba(190,90,200,${0.4 + d * 0.4})`; ctx.stroke();
+    const hole = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.62);  // пустота, гасящая свет
+    hole.addColorStop(0, 'rgba(4,2,7,0.92)'); hole.addColorStop(1, 'rgba(4,2,7,0)');
+    ctx.fillStyle = hole; ctx.beginPath(); ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  const enemyDraw = { swarm: drawSwarm, fat: drawFat, hunter: drawHunter, ranged: drawRanged, suppressor: drawSuppressor };
+
   // --- кадр ----------------------------------------------------------------
   function draw(world, effects) {
     const W = world.cfg.world.width, H = world.cfg.world.height, d = world.darkness;
@@ -124,15 +216,19 @@ export function createRenderer(canvas) {
       disc(pr.pos.x, pr.pos.y, pr.radius * 0.7, `rgb(${c})`, null);
     }
 
-    // враги — твари тьмы: цвет по типу, светлая кромка (читаемость на тёмном фоне)
-    const ec = { swarm: '#34343f', fat: '#6e2f42', hunter: '#d9863b', ranged: '#5a59b0', suppressor: '#9a3d9a' };
+    // враги — твари тьмы: силуэт по типу (роль читается формой) + игровые подсказки
     for (const e of world.enemies) {
-      disc(e.pos.x, e.pos.y, e.radius, ec[e.type] || '#34343f', `rgba(220,210,230,${0.15 + d * 0.25})`, 1.5);
-      if (e.markedUntil > world.time) disc(e.pos.x, e.pos.y, e.radius + 3, null, '#52ffb8', 2);
-      if (e.type === 'fat') {
+      (enemyDraw[e.type] || drawSwarm)(e, d, world.time, world);
+      if (e.markedUntil > world.time) {              // метка V (§2): вращающийся ретикл «взято на мушку»
+        ctx.save(); ctx.translate(e.pos.x, e.pos.y); ctx.rotate(world.time * 1.6);
+        ctx.strokeStyle = '#52ffb8'; ctx.lineWidth = 2;
+        for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(0, 0, e.radius + 6, i * Math.PI / 2 - 0.32, i * Math.PI / 2 + 0.32); ctx.stroke(); }
+        ctx.restore();
+      }
+      if (e.type === 'fat') {                         // порог-дуга hp толстяка (за потолком V — добивает D §2)
         const frac = Math.max(0, e.hp / e.maxHp);
         ctx.beginPath();
-        ctx.arc(e.pos.x, e.pos.y, e.radius + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+        ctx.arc(e.pos.x, e.pos.y, e.radius + 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
         ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffd23f'; ctx.stroke();
       }
     }
