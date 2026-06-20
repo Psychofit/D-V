@@ -123,13 +123,28 @@ function chip(cls, sel, locked, label, sub, data) {
     `${label}${locked ? ' 🔒' : ''}<small>${sub}</small></div>`;
 }
 
+// глифы силуэтов (эхо игровых сущностей): D — гранёный гексагон с ядром, V — круг с ореолом
+const GLYPH_D = '<svg viewBox="0 0 34 34" width="30" height="30">' +
+  '<polygon points="29.1,24 17,31 4.9,24 4.9,10 17,3 29.1,10" fill="#e5484d" stroke="#2a1012" stroke-width="2"/>' +
+  '<circle cx="17" cy="17" r="4.5" fill="#ff9a55"/></svg>';
+const GLYPH_V = '<svg viewBox="0 0 34 34" width="30" height="30">' +
+  '<circle cx="17" cy="17" r="15" fill="#54b6ff" fill-opacity="0.16"/>' +
+  '<circle cx="17" cy="17" r="9.5" fill="#54b6ff" stroke="#cdf0ff" stroke-width="1.4" stroke-opacity="0.85"/>' +
+  '<circle cx="13.5" cy="13.5" r="2.6" fill="#eaf8ff" fill-opacity="0.8"/></svg>';
+
+function facCard(fac, sel, glyph, title, sub) {
+  return `<div class="fac ${fac} ${sel ? 'sel' : ''}" data-fac="${fac}">` +
+    `<span class="fac-g">${glyph}</span>` +
+    `<span class="fac-tx"><b>${title}</b><small>${sub}</small></span></div>`;
+}
+
 function renderMenu() {
   fixHumanBuild();
   const av = availableBuilds(human.faction, progress);
   const isD = human.faction === 'D';
-  let html = `<div class="menu-row"><div class="lbl">Фракция (раздельные пулы ачивок §8)</div><div class="tabs">` +
-    chip('D', isD, false, 'D — уничтожать', 'высокий урон, жизнь в руках V', 'data-fac="D"') +
-    chip('', !isD, false, 'V — спасать', 'хил-экономика, легче на старте §9', 'data-fac="V"') + `</div></div>`;
+  let html = `<div class="menu-row"><div class="lbl">Фракция — раздельные пулы ачивок §8</div><div class="fac-tabs">` +
+    facCard('D', isD, GLYPH_D, 'D — уничтожать', 'высокий урон, жизнь в руках V') +
+    facCard('V', !isD, GLYPH_V, 'V — спасать', 'хил-экономика, легче на старте §9') + `</div></div>`;
 
   if (isD) {
     html += `<div class="menu-row"><div class="lbl">Оружие</div><div class="chips">` +
@@ -142,8 +157,8 @@ function renderMenu() {
       `</div></div>`;
   } else {
     html += `<div class="menu-row"><div class="lbl">Ветка хила</div><div class="chips">` +
-      chip('', human.heal === 'area', false, 'Площадь', 'охват, вблизи (надёжно)', 'data-h="area"') +
-      chip('', human.heal === 'single', !av.heals.includes('single'), 'Одноцель', 'точный, далеко, пробивает глушитель', 'data-h="single"') +
+      chip('V', human.heal === 'area', false, 'Площадь', 'охват, вблизи (надёжно)', 'data-h="area"') +
+      chip('V', human.heal === 'single', !av.heals.includes('single'), 'Одноцель', 'точный, далеко, пробивает глушитель', 'data-h="single"') +
       `</div></div>`;
   }
 
@@ -157,7 +172,7 @@ function renderMenu() {
 
   const el = document.getElementById('menu-content');
   el.innerHTML = html;
-  el.querySelectorAll('.chip').forEach((c) => {
+  el.querySelectorAll('[data-fac],[data-w],[data-ag],[data-h]').forEach((c) => {
     if (c.classList.contains('locked')) return;
     c.onclick = () => {
       if (c.dataset.fac) human.faction = c.dataset.fac;
@@ -167,6 +182,8 @@ function renderMenu() {
       renderMenu();
     };
   });
+  const sb = document.getElementById('btn-start');   // кнопка старта в цвет выбранной фракции
+  if (sb) sb.className = `primary ${human.faction}`;
 }
 
 function openMenu() { paused = true; overlay.style.display = 'flex'; renderMenu(); }
