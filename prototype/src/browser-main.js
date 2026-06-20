@@ -9,6 +9,7 @@ import { createWorld, stepWorld } from './sim/world.js';
 import { fireProjectile, pulseAttack } from './sim/combat.js';
 import { createRenderer } from './render/renderer.js';
 import { createEffects } from './render/effects.js';
+import { createAudio } from './audio/audio.js';
 import { createHud } from './render/hud.js';
 import { createRecorder } from './telemetry/recorder.js';
 import {
@@ -23,6 +24,7 @@ canvas.height = cfg.world.height;
 
 const renderer = createRenderer(canvas);
 const effects = createEffects();
+const audio = createAudio();
 const hud = createHud(document.getElementById('hud'));
 
 let world, recorder;
@@ -30,6 +32,7 @@ function reset() {
   world = createWorld(cfg, (Math.random() * 1e9) | 0);
   recorder = createRecorder(0.5);
   recorder.maybeSample(world);
+  effects.reset();   // сбросить диффы прошлого мира → без всплеска ложных смертей/звуков
 }
 reset();
 
@@ -93,6 +96,11 @@ const bind = (id, fn) => document.getElementById(id)?.addEventListener('click', 
 bind('btn-pause', () => { paused = !paused; });
 bind('btn-reset', () => reset());
 bind('btn-speed', (e) => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; e.target.textContent = `скорость ×${speed}`; });
+bind('btn-sound', (e) => {                              // тумблер звука (включается жестом — autoplay-политика)
+  const on = audio.setEnabled(!audio.isEnabled());
+  e.target.textContent = `звук: ${on ? 'вкл' : 'выкл'}`;
+  e.target.classList.toggle('on', on);
+});
 document.getElementById('chk-responsive')?.addEventListener('change', (e) => {
   cfg.ai.dDarkStopAt = e.target.checked ? 0.6 : 2.0; // живой тумблер отзывчивого D (§10)
 });
@@ -216,8 +224,10 @@ function frame(now) {
       acc -= dt; steps++;
     }
     trackAchievements(); // §8: засчитать достижения игрока, открыть сайдгрейды
-    effects.observe(world, controlledPlayer()?.id); // импакт-эффекты диффингом состояния
+    const evs = effects.observe(world, controlledPlayer()?.id); // импакт диффингом состояния
+    audio.handle(evs);                                          // те же события — в звук
   }
+  audio.update(world);   // гул тьмы следует за darkness (звучит и на паузе)
   effects.update(real);
   renderer.draw(world, effects);
   hud.update(world, recorder);
@@ -226,5 +236,5 @@ function frame(now) {
 requestAnimationFrame(frame);
 openMenu(); // старт — экран выбора билда (§8)
 
-// безвредный хук для инспекции/скриншотов (доступ к текущему миру из консоли)
-if (typeof window !== 'undefined') window.dvWorld = () => world;
+// безвредный хук для инспекции/скриншотов (доступ к текущему миру/звуку из консоли)
+if (typeof window !== 'undefined') { window.dvWorld = () => world; window.dvAudio = audio; }

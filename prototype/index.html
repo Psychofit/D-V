@@ -22,6 +22,7 @@
   button { background: #1d1d27; color: #d6d6e0; border: 1px solid #333; border-radius: 6px;
     padding: 6px 10px; cursor: pointer; font: inherit; }
   button:hover { background: #262633; }
+  button.on { border-color: #3e9bff; color: #cfe3ff; background: #1a2740; }
   label.toggle { display: flex; gap: 6px; align-items: center; cursor: pointer;
     background: #1d1d27; border: 1px solid #333; border-radius: 6px; padding: 6px 10px; }
   .dv-panel { background: linear-gradient(180deg, #13121c, #0e0d15); border: 1px solid #262433;
@@ -107,6 +108,7 @@
         <button id="btn-pause">пауза / пробел</button>
         <button id="btn-speed">скорость ×1</button>
         <button id="btn-reset">рестарт</button>
+        <button id="btn-sound">звук: выкл</button>
       </div>
       <label class="toggle"><input type="checkbox" id="chk-responsive"> отзывчивый D (§10)</label>
       <div id="hud"></div>

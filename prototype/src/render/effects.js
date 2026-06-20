@@ -79,12 +79,13 @@ export function createEffects() {
   }
 
   function observe(world, humanId) {
+    const evs = [];                                  // семантические события кадра (потребляет audio.js)
     for (const p of world.players) {
       const prev = prevHp.get(p.id);
       if (prev !== undefined && p.alive) {
         const d = p.hp - prev;
-        if (d < -0.5) onPlayerDamage(p, -d, p.id === humanId);
-        else if (d > 0.5) onPlayerHeal(p, d);
+        if (d < -0.5) { const dmg = -d; onPlayerDamage(p, dmg, p.id === humanId); evs.push({ type: 'dmg', faction: p.faction, mag: Math.min(1.5, dmg / 18) }); }
+        else if (d > 0.5) { onPlayerHeal(p, d); evs.push({ type: 'heal', mag: Math.min(1.5, d / 12) }); }
       }
       prevHp.set(p.id, p.alive ? p.hp : prev);
     }
@@ -93,11 +94,12 @@ export function createEffects() {
     for (const e of world.enemies) {
       curIds.add(e.id);
       const prev = prevEnemies.get(e.id);
-      if (prev && e.hp < prev.hp - 0.5) spark(e.pos.x, e.pos.y, '255,228,150');
+      if (prev && e.hp < prev.hp - 0.5) { spark(e.pos.x, e.pos.y, '255,228,150'); evs.push({ type: 'enemy-hit' }); }
     }
     for (const [id, e] of prevEnemies) {
       if (!curIds.has(id)) {
         pop(e.x, e.y, e.type === 'fat');
+        evs.push({ type: 'enemy-death', big: e.type === 'fat' });
         if (e.type === 'fat') shake = Math.max(shake, 5); // вес убийства толстяка
       }
     }
@@ -114,18 +116,27 @@ export function createEffects() {
       const ox = owner ? owner.pos.x : pr.pos.x, oy = owner ? owner.pos.y : pr.pos.y;
       const col = pr.effect === 'damage' ? '255,210,90' : pr.effect === 'enemyShot' ? '255,90,100' : '120,235,255';
       muzzle(ox, oy, { x: pr.vel.x / sp, y: pr.vel.y / sp }, col);
+      evs.push({ type: 'shoot', src: pr.effect });
     }
     prevProj.clear();
     for (const id of curProj) prevProj.add(id);
     // Пульс игрока-человека → тряска + земля (одно срабатывание на удар)
-    const hp = world.players.find((p) => p.id === humanId);
-    if (hp && hp.pulseFx && hp.pulseFx.t !== lastPulseT && world.time - hp.pulseFx.t < 0.2) {
-      lastPulseT = hp.pulseFx.t;
-      shake = Math.max(shake, 6); groundRing(hp.pos.x, hp.pos.y, 1);
+    const hpp = world.players.find((p) => p.id === humanId);
+    if (hpp && hpp.pulseFx && hpp.pulseFx.t !== lastPulseT && world.time - hpp.pulseFx.t < 0.2) {
+      lastPulseT = hpp.pulseFx.t;
+      shake = Math.max(shake, 6); groundRing(hpp.pos.x, hpp.pos.y, 1);
+      evs.push({ type: 'pulse' });
     }
     // вспышка ярости §6 (все V мертвы) — резкий удар: вспышка + тряска
-    if (world.fury && !furySeen) { furySeen = true; flash = 1; shake = Math.max(shake, 12); }
+    if (world.fury && !furySeen) { furySeen = true; flash = 1; shake = Math.max(shake, 12); evs.push({ type: 'fury' }); }
     if (!world.fury) furySeen = false;
+    return evs;
+  }
+
+  function reset() {                                  // рестарт мира: сброс, чтобы не было всплеска ложных диффов/звуков
+    parts = [];
+    entFx.clear(); prevHp.clear(); prevEnemies.clear(); prevProj.clear();
+    shake = 0; flash = 0; furySeen = false; lastPulseT = -1;
   }
 
   function update(dt) {
@@ -175,7 +186,7 @@ export function createEffects() {
   }
 
   return {
-    observe, update, entityFx, screenOffset,
+    observe, update, reset, entityFx, screenOffset,
     drawGround: (ctx) => drawLayer(ctx, 'ground'),
     drawOver: (ctx) => drawLayer(ctx, 'over'),
     drawScreen,
