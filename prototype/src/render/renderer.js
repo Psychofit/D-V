@@ -24,19 +24,22 @@ export function createRenderer(canvas) {
     if (stroke) { ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke(); }
   }
 
-  function hpRing(p) {
+  function hpRing(p, x, y, r) {
     const frac = Math.max(0, p.hp / p.maxHp);
     ctx.beginPath();
-    ctx.arc(p.pos.x, p.pos.y, p.radius + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
+    ctx.arc(x, y, r + 4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
     ctx.lineWidth = 3;
     ctx.strokeStyle = frac > 0.4 ? '#4ad66d' : '#e5484d';
     ctx.stroke();
   }
 
-  function draw(world) {
+  function draw(world, effects) {
     const W = world.cfg.world.width, H = world.cfg.world.height;
+    const so = effects ? effects.screenOffset() : { x: 0, y: 0 };
+    ctx.save();
+    ctx.translate(so.x, so.y);
     ctx.fillStyle = bg(world.darkness);
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(-16, -16, W + 32, H + 32);
 
     // центр спавна (§7) — откуда давят враги
     const cx = W / 2, cy = H / 2;
@@ -58,6 +61,9 @@ export function createRenderer(canvas) {
       ctx.fill();
       ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(170,80,170,0.4)'; ctx.stroke();
     }
+
+    // НАЗЕМНЫЙ слой импакта (ударные волны/пыль D) — под сущностями
+    if (effects) effects.drawGround(ctx);
 
     // снаряды: D-урон жёлтый, V-хил/площадь зелёный, вражеский — красный (входящая угроза)
     for (const pr of world.projectiles) {
@@ -95,31 +101,41 @@ export function createRenderer(canvas) {
         ctx.stroke();
         continue;
       }
+      // импакт-фактура (§визуал): V дрожит (jitter), D — стальной вес-пульс масштаба
+      const fx = effects ? effects.entityFx(p.id) : { dx: 0, dy: 0, scale: 1 };
+      const x = p.pos.x + fx.dx, y = p.pos.y + fx.dy, r = p.radius * fx.scale;
+
       // конус Пульса D (§2) — транзиентный след
       if (p.pulseFx && world.time - p.pulseFx.t < 0.12) {
         const pc = world.cfg.D.pulse;
         const ang = Math.atan2(p.pulseFx.aim.y, p.pulseFx.aim.x);
         const alpha = 0.4 * (1 - (world.time - p.pulseFx.t) / 0.12);
         ctx.beginPath();
-        ctx.moveTo(p.pos.x, p.pos.y);
-        ctx.arc(p.pos.x, p.pos.y, pc.range, ang - pc.coneHalfAngle, ang + pc.coneHalfAngle);
+        ctx.moveTo(x, y);
+        ctx.arc(x, y, pc.range, ang - pc.coneHalfAngle, ang + pc.coneHalfAngle);
         ctx.closePath();
         ctx.fillStyle = `rgba(255,210,63,${alpha})`;
         ctx.fill();
       }
       const fill = p.faction === 'D' ? '#e5484d' : '#3e9bff';
-      disc(p.pos.x, p.pos.y, p.radius, fill, p.controlled ? '#fff' : '#0008');
+      disc(x, y, r, fill, p.controlled ? '#fff' : '#0008');
       if (p.loadout.provoker) {                 // аггро-роль §7 — оранжевое кольцо
         ctx.beginPath();
-        ctx.arc(p.pos.x, p.pos.y, p.radius + 7, 0, Math.PI * 2);
+        ctx.arc(x, y, r + 7, 0, Math.PI * 2);
         ctx.lineWidth = 1.5; ctx.strokeStyle = '#d9863b'; ctx.stroke();
       }
-      hpRing(p);
+      hpRing(p, x, y, r);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 12px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(p.faction, p.pos.x, p.pos.y + 4);
+      ctx.fillText(p.faction, x, y + 4);
     }
+
+    // ВЕРХНИЙ слой импакта (рябь V, свечение хила, попадания, смерти) — над сущностями
+    if (effects) effects.drawOver(ctx);
+    ctx.restore();
+    // полноэкранная вспышка ярости §6 (не трясётся вместе с миром)
+    if (effects) effects.drawScreen(ctx, W, H);
   }
 
   return { draw };

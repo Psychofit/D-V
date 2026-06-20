@@ -8,6 +8,7 @@ import { CONFIG } from './config.js';
 import { createWorld, stepWorld } from './sim/world.js';
 import { fireProjectile, pulseAttack } from './sim/combat.js';
 import { createRenderer } from './render/renderer.js';
+import { createEffects } from './render/effects.js';
 import { createHud } from './render/hud.js';
 import { createRecorder } from './telemetry/recorder.js';
 import {
@@ -21,6 +22,7 @@ canvas.width = cfg.world.width;
 canvas.height = cfg.world.height;
 
 const renderer = createRenderer(canvas);
+const effects = createEffects();
 const hud = createHud(document.getElementById('hud'));
 
 let world, recorder;
@@ -214,8 +216,10 @@ function frame(now) {
       acc -= dt; steps++;
     }
     trackAchievements(); // §8: засчитать достижения игрока, открыть сайдгрейды
+    effects.observe(world, controlledPlayer()?.id); // импакт-эффекты диффингом состояния
   }
-  renderer.draw(world);
+  effects.update(real);
+  renderer.draw(world, effects);
   hud.update(world, recorder);
   requestAnimationFrame(frame);
 }
