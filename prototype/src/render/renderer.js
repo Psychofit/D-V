@@ -108,9 +108,16 @@ export function createRenderer(canvas) {
 
     if (effects) effects.drawGround(ctx);            // наземные ударные волны D
 
-    // снаряды — энергичные точки со слабым свечением
+    // снаряды — со следом (motion-blur), свечением и ядром
     for (const pr of world.projectiles) {
       const c = pr.effect === 'damage' ? '255,210,63' : pr.effect === 'enemyShot' ? '255,85,102' : '82,255,184';
+      const sp = Math.hypot(pr.vel.x, pr.vel.y) || 1;
+      const len = Math.min(34, sp * 0.05);
+      const tx = pr.pos.x - (pr.vel.x / sp) * len, ty = pr.pos.y - (pr.vel.y / sp) * len;
+      const lg = ctx.createLinearGradient(pr.pos.x, pr.pos.y, tx, ty);
+      lg.addColorStop(0, `rgba(${c},0.55)`); lg.addColorStop(1, `rgba(${c},0)`);
+      ctx.strokeStyle = lg; ctx.lineWidth = pr.radius * 1.3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(pr.pos.x, pr.pos.y); ctx.lineTo(tx, ty); ctx.stroke();
       const g = ctx.createRadialGradient(pr.pos.x, pr.pos.y, 0, pr.pos.x, pr.pos.y, pr.radius * 2.4);
       g.addColorStop(0, `rgba(${c},0.9)`); g.addColorStop(1, `rgba(${c},0)`);
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(pr.pos.x, pr.pos.y, pr.radius * 2.4, 0, Math.PI * 2); ctx.fill();

@@ -17,7 +17,8 @@ export function createEffects() {
   let shake = 0;                  // тряска экрана (затухает)
   let flash = 0;                  // полноэкранная вспышка ярости (§6)
   const prevHp = new Map();       // id -> hp (игроки)
-  const prevEnemies = new Map();  // id -> {x,y,type}
+  const prevEnemies = new Map();  // id -> {x,y,type,hp}
+  const prevProj = new Set();     // id снарядов (для вспышек выстрела)
   let furySeen = false;
   let lastPulseT = -1;            // антидубль Пульса по кадрам
 
@@ -43,6 +44,20 @@ export function createEffects() {
     for (let i = 0; i < (big ? 10 : 5); i++) {
       const a = rnd(0, Math.PI * 2), s = rnd(50, big ? 220 : 120);
       add({ style: 'dot', layer: 'over', x, y, r: rnd(1, big ? 3 : 2), vx: Math.cos(a) * s, vy: Math.sin(a) * s, grav: 0, life: 0.35, maxLife: 0.35, color: big ? '210,110,110' : '150,150,160' });
+    }
+  }
+
+  function muzzle(x, y, dir, color) {             // вспышка выстрела + искры по ходу
+    add({ style: 'glow', layer: 'over', x: x + dir.x * 4, y: y + dir.y * 4, r: 9, vr: -20, life: 0.1, maxLife: 0.1, color, width: 0 });
+    for (let i = 0; i < 2; i++) {
+      const a = Math.atan2(dir.y, dir.x) + rnd(-0.4, 0.4), s = rnd(120, 240);
+      add({ style: 'dot', layer: 'over', x, y, r: rnd(1, 1.8), vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.12, maxLife: 0.12, color });
+    }
+  }
+  function spark(x, y, color) {                    // искра попадания по врагу
+    for (let i = 0; i < 2; i++) {
+      const a = rnd(0, Math.PI * 2), s = rnd(50, 130);
+      add({ style: 'dot', layer: 'over', x, y, r: rnd(1, 2), vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.18, maxLife: 0.18, color });
     }
   }
 
@@ -73,22 +88,43 @@ export function createEffects() {
       }
       prevHp.set(p.id, p.alive ? p.hp : prev);
     }
-    // смерти врагов
-    const cur = new Map();
-    for (const e of world.enemies) cur.set(e.id, e);
+    // враги: искры по полученному урону + бёрст смерти (толстяк — с тряской)
+    const curIds = new Set();
+    for (const e of world.enemies) {
+      curIds.add(e.id);
+      const prev = prevEnemies.get(e.id);
+      if (prev && e.hp < prev.hp - 0.5) spark(e.pos.x, e.pos.y, '255,228,150');
+    }
     for (const [id, e] of prevEnemies) {
-      if (!cur.has(id)) pop(e.x, e.y, e.type === 'fat');
+      if (!curIds.has(id)) {
+        pop(e.x, e.y, e.type === 'fat');
+        if (e.type === 'fat') shake = Math.max(shake, 5); // вес убийства толстяка
+      }
     }
     prevEnemies.clear();
-    for (const e of world.enemies) prevEnemies.set(e.id, { x: e.pos.x, y: e.pos.y, type: e.type });
+    for (const e of world.enemies) prevEnemies.set(e.id, { x: e.pos.x, y: e.pos.y, type: e.type, hp: e.hp });
+
+    // вспышки выстрелов (новые снаряды) — у дула стрелка, по ходу полёта
+    const curProj = new Set();
+    for (const pr of world.projectiles) {
+      curProj.add(pr.id);
+      if (prevProj.has(pr.id)) continue;
+      const owner = world.players.find((p) => p.id === pr.ownerId);
+      const sp = Math.hypot(pr.vel.x, pr.vel.y) || 1;
+      const ox = owner ? owner.pos.x : pr.pos.x, oy = owner ? owner.pos.y : pr.pos.y;
+      const col = pr.effect === 'damage' ? '255,210,90' : pr.effect === 'enemyShot' ? '255,90,100' : '120,235,255';
+      muzzle(ox, oy, { x: pr.vel.x / sp, y: pr.vel.y / sp }, col);
+    }
+    prevProj.clear();
+    for (const id of curProj) prevProj.add(id);
     // Пульс игрока-человека → тряска + земля (одно срабатывание на удар)
     const hp = world.players.find((p) => p.id === humanId);
     if (hp && hp.pulseFx && hp.pulseFx.t !== lastPulseT && world.time - hp.pulseFx.t < 0.2) {
       lastPulseT = hp.pulseFx.t;
       shake = Math.max(shake, 6); groundRing(hp.pos.x, hp.pos.y, 1);
     }
-    // вспышка ярости §6 (все V мертвы)
-    if (world.fury && !furySeen) { furySeen = true; flash = 1; }
+    // вспышка ярости §6 (все V мертвы) — резкий удар: вспышка + тряска
+    if (world.fury && !furySeen) { furySeen = true; flash = 1; shake = Math.max(shake, 12); }
     if (!world.fury) furySeen = false;
   }
 
