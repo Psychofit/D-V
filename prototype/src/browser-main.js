@@ -225,3 +225,6 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 openMenu(); // старт — экран выбора билда (§8)
+
+// безвредный хук для инспекции/скриншотов (доступ к текущему миру из консоли)
+if (typeof window !== 'undefined') window.dvWorld = () => world;
