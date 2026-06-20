@@ -33,6 +33,39 @@
   .dv-cap { color: #666; font-size: 11px; margin-top: 6px; }
   .hint { color: #777; font-size: 12px; max-width: 620px; text-align: center; }
   .hint kbd { background: #1d1d27; border: 1px solid #333; border-radius: 4px; padding: 1px 5px; }
+  /* --- меню билда / ачивки (§8) --- */
+  #menu-overlay { position: fixed; inset: 0; background: #06060bdd; display: flex;
+    align-items: center; justify-content: center; z-index: 10; backdrop-filter: blur(3px); }
+  #menu-card { background: #12121a; border: 1px solid #2a2a36; border-radius: 12px;
+    padding: 22px 26px; width: min(560px, 92vw); box-shadow: 0 10px 50px #000a; }
+  #menu-card h2 { margin: 0 0 4px; font-size: 18px; }
+  .menu-sub { color: #888; font-size: 12px; margin: 0 0 14px; }
+  .menu-row { margin: 12px 0; }
+  .menu-row > .lbl { color: #9aa; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .tabs, .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { background: #1b1b25; border: 1px solid #333; border-radius: 8px; padding: 8px 14px;
+    cursor: pointer; user-select: none; font: inherit; color: #ccd; }
+  .chip:hover { background: #24242f; }
+  .chip.sel { border-color: #3e9bff; background: #1d2b40; color: #fff; }
+  .chip.D.sel { border-color: #e5484d; background: #3a1c1e; }
+  .chip.locked { opacity: .45; cursor: not-allowed; }
+  .chip small { color: #888; display: block; font-size: 10px; margin-top: 2px; }
+  .ach-list { display: flex; flex-direction: column; gap: 5px; max-height: 190px; overflow: auto; }
+  .ach { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 5px 8px;
+    border-radius: 6px; background: #15151e; }
+  .ach.done { background: #16241a; }
+  .ach .mk { width: 16px; text-align: center; }
+  .ach .t { color: #ccd; } .ach.done .t { color: #7ee08a; }
+  .ach .d { color: #777; } .ach .u { color: #d9863b; margin-left: auto; font-size: 11px; }
+  #menu-actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+  button.primary { background: #1d2b40; border-color: #3e9bff; color: #fff; padding: 9px 18px; font-weight: 600; }
+  button.primary:hover { background: #244a78; }
+  #btn-reset-progress { margin-left: auto; color: #966; font-size: 12px; }
+  #toasts { position: fixed; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 20; }
+  .toast { background: #16241a; border: 1px solid #2f6b3a; border-radius: 8px; padding: 10px 14px;
+    box-shadow: 0 4px 20px #0008; animation: toastin .3s ease; max-width: 280px; }
+  .toast b { color: #7ee08a; } .toast small { color: #9a9; display: block; }
+  @keyframes toastin { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 </style>
 </head>
 <body>
@@ -41,6 +74,7 @@
     <canvas id="game"></canvas>
     <div class="side">
       <div class="controls">
+        <button id="btn-menu">меню билда</button>
         <button id="btn-pause">пауза / пробел</button>
         <button id="btn-speed">скорость ×1</button>
         <button id="btn-reset">рестарт</button>
@@ -50,15 +84,30 @@
     </div>
   </div>
   <div class="hint">
+    <b>Меню билда (§8)</b> до старта: выбери фракцию и сайдгрейды (открываются за достижения).
     Толпа D и V (§7) ведётся ботами. «Вселиться»: <kbd>1</kbd> в D · <kbd>2</kbd> в V · <kbd>0</kbd> отпустить.
     Движение <kbd>WASD</kbd>, атака — <b>мышь зажата</b>. У D — <b>Пульс</b>: конус в упор (§2),
     надо стоять вплотную → D кровит → нужен V. У V выстрел = хил всех D / урон врагам в радиусе.
     <b>Толстяк</b> (бордовый) за потолком V — V лишь <span style="color:#52ffb8">метит</span>, добивает D.
     <span style="color:#d9863b">Охотник</span> рвётся к V; <span style="color:#5a59b0">дальнобой</span> бьёт V
     <span style="color:#ff5566">снарядами</span> издали (в тьме — чаще, сжимает V-кромку §3).
+    <span style="color:#c060c0">Глушитель</span> — в его <span style="color:#c060c0">зоне</span> хил подавлен и снимаются метки (§3).
     Часть D с оранжевым кольцом — <b>провокаторы</b> (аггро-нода §7): стягивают охотников/дальнобоев
     с V на себя. Включите «отзывчивый D» и сравните график net.
   </div>
+  <div id="menu-overlay">
+    <div id="menu-card">
+      <h2>Билд до старта (§8)</h2>
+      <p class="menu-sub">Очки сбрасываются каждую сессию. Сайдгрейды — «не лучше, просто иначе»;
+        открываются за достижения (раздельно D и V).</p>
+      <div id="menu-content"></div>
+      <div id="menu-actions">
+        <button id="btn-start" class="primary">В бой →</button>
+        <button id="btn-reset-progress">сбросить прогресс</button>
+      </div>
+    </div>
+  </div>
+  <div id="toasts"></div>
   <script type="module" src="./src/browser-main.js"></script>
 </body>
 </html>

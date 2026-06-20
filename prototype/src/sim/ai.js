@@ -55,12 +55,12 @@ function enemyAI(world, e) {
   // тьма ускоряет врага → он догоняет кайтящего D (§3, замыкает канат)
   const speed = e.speed * (1 + world.darkness * e.speedDarkGain);
 
-  if (e.attackKind === 'ranged') {
-    // держит дистанцию ~80% дальности стрельбы: достаёт V, но не лезет в ближний бой
+  if (e.attackKind === 'ranged' || e.attackKind === 'none') {
+    // дальнобой держит дистанцию стрельбы; глушитель — standoff, накрывая бой зоной (§3)
     const d = dist(e.pos, target.pos);
-    const want = e.fireRange * 0.8;
+    const want = e.attackKind === 'ranged' ? e.fireRange * 0.8 : e.standoff;
     if (d > want * 1.1) e.vel = scale(dir(e.pos, target.pos), speed);       // подойти на дистанцию
-    else if (d < want * 0.7) e.vel = scale(dir(target.pos, e.pos), speed);  // отойти (кайт от клинча)
+    else if (d < want * 0.7) e.vel = scale(dir(target.pos, e.pos), speed);  // отойти (не лезть в клинч)
     else e.vel = { x: 0, y: 0 };
   } else {
     e.vel = scale(dir(e.pos, target.pos), speed);                            // ближний/охотник — на цель
@@ -78,7 +78,7 @@ function dAI(world, d, dt) {
     // жизнь в чужих руках — жмёмся к V (§1: у D нет кнопки спасения)
     setMove(d, dir(d.pos, medic.pos), dt);
   } else if (enemy) {
-    if (world.cfg.D.weapon === 'pulse') dPulseEngage(world, d, enemy, dt);
+    if (d.loadout.weapon === 'pulse') dPulseEngage(world, d, enemy, dt);
     else dShotEngage(world, d, enemy, dt);
   } else {
     d.vel = { x: 0, y: 0 };
@@ -107,12 +107,31 @@ function dPulseEngage(world, d, enemy, dt) {
   if (dd <= pc.range + enemy.radius) pulseAttack(world, d, dir(d.pos, enemy.pos));
 }
 
+// Подопечный V: РАНЕНЫЙ D в зоне хила (фронтлайн, что кровит), иначе ближайший. Фокус на
+// тех, кому хил нужен, держит танкующих пульсеров живыми (§2: доходный пациент). Разные V
+// РАСПРЕДЕЛЯЮТСЯ по раненым D (анти-дубль по id) — критично для одноцели (не лечить одного впятером).
+function pickWard(world, v) {
+  const range = world.cfg.V.shotRange;
+  const hurt = [];
+  let nearest = null, nd = Infinity;
+  for (const p of world.players) {
+    if (!p.alive || p.faction !== 'D') continue;
+    const d = dist(v.pos, p.pos);
+    if (d < nd) { nd = d; nearest = p; }
+    if (d <= range && p.hp < p.maxHp) hurt.push(p);
+  }
+  if (!hurt.length) return nearest;
+  hurt.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp); // самые раненые впереди
+  return hurt[v.id % hurt.length];                      // распределяем V по раненым целям
+}
+
 function vAI(world, v, dt) {
   const cfg = world.cfg.ai;
-  const ward = nearestAlly(world, v, 'D'); // подопечный D
+  const ward = pickWard(world, v); // приоритет — самый раненый D (фронтлайн), §2
   const enemy = nearestEnemy(world, v.pos);
 
-  // --- Позиция на V-кромке (§2) ---
+  // --- Позиция на V-кромке (§2): площадь близко (охват/риск), одноцель далеко (безопасность) ---
+  const kromka = v.loadout.heal === 'single' ? cfg.vKromkaSingle : cfg.vKromkaDistance;
   if (enemy && dist(v.pos, enemy.pos) < cfg.vDangerDistance) {
     // слишком близко враг — отступаем (иначе сработает "все V мертвы")
     setMove(v, dir(enemy.pos, v.pos), dt);
@@ -121,9 +140,9 @@ function vAI(world, v, dt) {
     let desiredPos;
     if (enemy) {
       const away = norm(sub(ward.pos, enemy.pos)); // направление "от врага" за спину D
-      desiredPos = add(ward.pos, scale(away, cfg.vKromkaDistance));
+      desiredPos = add(ward.pos, scale(away, kromka));
     } else {
-      desiredPos = add(ward.pos, scale(norm(sub(v.pos, ward.pos)), cfg.vKromkaDistance));
+      desiredPos = add(ward.pos, scale(norm(sub(v.pos, ward.pos)), kromka));
     }
     const toDesired = sub(desiredPos, v.pos);
     if (dist(v.pos, desiredPos) > 8) setMove(v, toDesired, dt);
@@ -132,12 +151,12 @@ function vAI(world, v, dt) {
     v.vel = { x: 0, y: 0 };
   }
 
-  // --- Выстрел = хил/урон одним снарядом (§2) ---
+  // --- Выстрел (§2) ---
   if (ward && ward.hp < ward.maxHp && dist(v.pos, ward.pos) <= world.cfg.V.shotRange) {
-    // лечим раненого D (основной доход V, §5)
+    // лечим раненого D (основной доход V, §5) — у обеих веток
     fireProjectile(world, v, dir(v.pos, ward.pos));
-  } else if (enemy && dist(v.pos, enemy.pos) <= world.cfg.V.shotRange) {
-    // D целый — попутно жжём врага (мелочь — добыча V, §2)
+  } else if (v.loadout.heal === 'area' && enemy && dist(v.pos, enemy.pos) <= world.cfg.V.shotRange) {
+    // площадь: D целый — попутно жжём/метим врага охватом (одноцель — чистый хилер, не палит)
     fireProjectile(world, v, dir(v.pos, enemy.pos));
   }
 

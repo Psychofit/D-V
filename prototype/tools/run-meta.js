@@ -9,7 +9,10 @@
 // =============================================================================
 
 import { CONFIG, withOverrides } from '../src/config.js';
-import { measureLandscape, runDynamics } from '../src/meta/factionMeta.js';
+import {
+  measureLandscape, runDynamics, measureBuilds, measureBuildLandscape, runBuildDynamics,
+  measureVHealByDensity,
+} from '../src/meta/factionMeta.js';
 
 function parseArgs(argv) {
   const a = { mode: 'dynamics', seed: 1, series: 5, sets: [], splits: null };
@@ -18,7 +21,7 @@ function parseArgs(argv) {
     const m = rest[i].match(/^--([^=]+)(?:=(.*))?$/);
     if (!m) continue;
     const [, k, val] = m;
-    if (k === 'landscape' || k === 'dynamics') a.mode = k;
+    if (['landscape', 'dynamics', 'builds', 'buildscape', 'builddyn', 'vheal'].includes(k)) a.mode = k;
     else if (k === 'set') a.sets.push(val ?? rest[++i]);
     else if (k === 'splits') a.splits = (val ?? rest[++i]).split(',').map(Number);
     else if (k in a) a[k] = Number(val);
@@ -57,7 +60,8 @@ function sparkFd(history, width = 60) {
 }
 
 const args = parseArgs(process.argv);
-const cfg = withOverrides(CONFIG, buildOverrides(args.sets));
+const overrides = buildOverrides(args.sets);
+const cfg = withOverrides(CONFIG, overrides);
 
 console.log('='.repeat(80));
 console.log('D / V — петля выбора фракции между сессиями (GDD §5, §7, §9, §10).');
@@ -91,6 +95,89 @@ if (args.mode === 'landscape') {
     console.log('→ V/D пересекает 1 → есть точка равновесия → выбор может сходиться к балансу.');
   else
     console.log('→ V доходнее везде → коллапс в all-V.');
+} else if (args.mode === 'vheal') {
+  // Ветки хила V по плотности (§2): одноцель — ранняя/разреженная фаза, площадь — поздняя/скученная.
+  console.log('ВЕТКИ ХИЛА V по ПЛОТНОСТИ боя (§2: кривая синхронизирована с дугой сессии).');
+  console.log(`сессия=${cfg.meta.sessionSeconds}с. Где какая ветка держит симбиоз (выживаемость D)?`);
+  console.log('='.repeat(80));
+  console.log('  D=V | площадь: D-выжив / тьма | одноцель: D-выжив / тьма | кто держит');
+  const rows = measureVHealByDensity(cfg, { seed: args.seed });
+  for (const r of rows) {
+    const win = r.single.dSurv > r.area.dSurv + 0.1 ? 'одноцель'
+      : r.area.dSurv > r.single.dSurv + 0.1 ? 'площадь' : '≈ обе';
+    console.log(`  ${String(r.n).padStart(3)} | ` +
+      `${(r.area.dSurv * 100).toFixed(0).padStart(8)}% / ${r.area.dark.toFixed(2)} | ` +
+      `${(r.single.dSurv * 100).toFixed(0).padStart(9)}% / ${r.single.dark.toFixed(2)} | ${win}`);
+  }
+  console.log('='.repeat(80));
+  console.log('Ожидаемо (§2): разреженно — одноцель ≈ площади (её фаза); скученно — нужна площадь.');
+  console.log('→ Ветки V горизонтальны ПО ФАЗЕ (не в одном контексте, как оружие D). Билд V зависит от плотности.');
+} else if (args.mode === 'builddyn') {
+  // Петля выбора билда D (§8/§10): сходится к миксу или сваливается в all-shot?
+  const runs = [];
+  for (let i = 0; i < args.series; i++) runs.push(runBuildDynamics(cfg, args.seed + i));
+  console.log(`ВЫБОР БИЛДА D (Пульс/Выстрел): серий=${args.series} раундов=${cfg.meta.rounds} ` +
+    `β=${cfg.meta.beta} pulseAttract=${cfg.meta.pulseAttract} switch=${cfg.meta.switchFrac}`);
+  console.log('Шкала pf (доля Пульса): " " all-shot (0) → "@" all-pulse (1). Здоровый микс = середина.');
+  console.log('='.repeat(80));
+  const tally = {};
+  for (let i = 0; i < runs.length; i++) {
+    const { history, verdict } = runs[i];
+    tally[verdict.label] = (tally[verdict.label] || 0) + 1;
+    const last = history[history.length - 1];
+    console.log(`серия ${i + 1} | ${verdict.label.padEnd(17)} | pf→${(verdict.meanPf ?? 0).toFixed(2)} ` +
+      `| финал pulse=${Math.round(last.pf * 10)}/10 тьма=${last.darkness.toFixed(2)}`);
+    console.log('   pf │ ' + sparkFd(history.map((h) => ({ fD: h.pf }))));
+  }
+  console.log('='.repeat(80));
+  console.log('СВОДКА:');
+  for (const [label, n] of Object.entries(tally).sort((a, b) => b[1] - a[1]))
+    console.log(`  ${label.padEnd(18)} ${n}/${runs.length}`);
+  console.log('');
+  console.log('MIX = выбор билда сам держит смесь танков/дамагеров → сайдгрейд горизонтален (§8).');
+  console.log('COLLAPSE→all-shot = фрирайд побеждает → нужен сильнее пейофф пульсера / премия дефицита.');
+} else if (args.mode === 'buildscape') {
+  // Ландшафт пейоффа билда D (§8/§10): доходнее ли Пульс, когда пульсеров мало?
+  console.log('ЛАНДШАФТ билда D (выстрел vs Пульс): есть ли "премия за дефицит билда"?');
+  console.log(`10D/10V, сессия=${cfg.meta.sessionSeconds}с. pulse/shot>1 при дефиците пульсеров → выбор сойдётся.`);
+  console.log('='.repeat(80));
+  console.log('  доля pulse | доход pulse | доход shot | pulse/shot | выжив p/s  | тьма');
+  const rows = measureBuildLandscape(cfg, { seed: args.seed });
+  for (const r of rows) {
+    console.log(`  ${r.pf.toFixed(2).padStart(10)} | ${r.pulseIncome.toFixed(0).padStart(11)} | ` +
+      `${r.shotIncome.toFixed(0).padStart(10)} | ${r.ratio.toFixed(2).padStart(10)} | ` +
+      `${(r.pulseAlive * 100).toFixed(0)}%/${(r.shotAlive * 100).toFixed(0)}%`.padStart(10) + ` | ${r.darkness.toFixed(2)}`);
+  }
+  const lo = rows[0].ratio, hi = rows[rows.length - 1].ratio; // при малой доле pulse vs большой
+  console.log('='.repeat(80));
+  console.log(`pulse/shot при дефиците пульсеров=${lo.toFixed(2)}, при избытке=${hi.toFixed(2)}.`);
+  console.log(lo > 1 && lo > hi
+    ? '→ Премия за дефицит билда ЕСТЬ (Пульс ценен, когда редок) → выбор билда сойдётся к миксу.'
+    : '→ Премии нет: shot выгоднее даже при дефиците пульсеров → выбор сваливает в all-shot (как было с фракцией).');
+} else if (args.mode === 'builds') {
+  // Горизонтальность сайдгрейдов (§8): мешаем билды 50/50 (user --set перебивает),
+  // меряем подушевой доход и выживаемость по билдам. Доминирующий билд = нарушение §8.
+  const mixDefault = { loadouts: { D: { pulseFraction: 0.5, provokerFraction: 0.5 }, V: { areaFraction: 0.5 } } };
+  const buildCfg = withOverrides(withOverrides(CONFIG, mixDefault), overrides);
+  console.log('ГОРИЗОНТАЛЬНОСТЬ билдов §8: доминирует ли какой-то сайдгрейд?');
+  console.log(`микс билдов 50/50, сессия=${buildCfg.meta.sessionSeconds}с`);
+  console.log('='.repeat(80));
+  console.log('  билд                | подуш.доход | выжив. | V:хил%');
+  const rows = measureBuilds(buildCfg, { seed: args.seed });
+  for (const r of rows) {
+    console.log(`  ${r.build.padEnd(20)}| ${r.income.toFixed(1).padStart(11)} | ` +
+      `${(r.alive * 100).toFixed(0).padStart(5)}% | ${r.faction === 'V' ? (r.healShare * 100).toFixed(0) + '%' : '—'}`);
+  }
+  console.log('='.repeat(80));
+  for (const fac of ['D', 'V']) {
+    const fr = rows.filter((r) => r.faction === fac);
+    if (fr.length < 2) continue;
+    const inc = fr.map((r) => r.income);
+    const ratio = Math.max(...inc) / Math.max(1e-6, Math.min(...inc));
+    const top = fr.reduce((a, b) => (b.income > a.income ? b : a));
+    console.log(`  ${fac}: разброс дохода ×${ratio.toFixed(2)} (лидер: ${top.build}). ` +
+      (ratio < 1.6 ? 'ГОРИЗОНТАЛЬНО (§8 ок).' : 'билд доминирует → проверить §8.'));
+  }
 } else {
   const runs = [];
   for (let i = 0; i < args.series; i++) runs.push(runDynamics(cfg, args.seed + i));

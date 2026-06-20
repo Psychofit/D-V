@@ -75,6 +75,165 @@ export function measureLandscape(baseCfg, opts = {}) {
   return rows;
 }
 
+// Ключ билда игрока (§8): что за сайдгрейды он принёс.
+function buildKey(p) {
+  if (p.faction === 'D') return `D ${p.loadout.weapon}${p.loadout.provoker ? '+агро' : ''}`;
+  return `V ${p.loadout.heal}`;
+}
+
+// Горизонтальность сайдгрейдов (§8): подушевой доход и выживаемость по билдам в СМЕШАННЫХ
+// сессиях. Если внутри фракции какой-то билд доходнее/живучее прочих — он "лучший", а не
+// "иной" (нарушение §8: все взяли бы его → перекос каната). Прогоняется на миксе билдов.
+export function measureBuilds(baseCfg, opts = {}) {
+  const seconds = opts.sessionSeconds ?? baseCfg.meta.sessionSeconds;
+  const repeats = opts.repeats ?? 8;
+  const seed = opts.seed ?? 1;
+  const numD = opts.numD ?? 10, numV = opts.numV ?? 10;
+
+  const acc = {};
+  for (let r = 0; r < repeats; r++) {
+    const cfg = withOverrides(baseCfg, { session: { numD, numV } });
+    const world = createWorld(cfg, seed + r * 17);
+    const dt = cfg.world.dt;
+    while (world.running && world.time < seconds) stepWorld(world, dt);
+    for (const p of world.players) {
+      const k = buildKey(p);
+      const a = acc[k] || (acc[k] = { faction: p.faction, income: 0, heal: 0, n: 0, alive: 0 });
+      a.income += p.incomeTotal; a.heal += p.incomeHeal; a.n++; a.alive += p.alive ? 1 : 0;
+    }
+  }
+  const rows = Object.entries(acc).map(([build, a]) => ({
+    build, faction: a.faction, n: a.n,
+    income: a.income / a.n, alive: a.alive / a.n,
+    healShare: a.heal / Math.max(1e-6, a.income),
+  }));
+  rows.sort((x, y) => (x.faction === y.faction ? y.income - x.income : x.faction < y.faction ? -1 : 1));
+  return rows;
+}
+
+// Ландшафт пейоффа БИЛДА D (выстрел vs Пульс) по доле пульсеров (§8/§10). Аналог
+// ландшафта фракций: возникает ли "премия за дефицит билда" — pulse доходнее, когда
+// пульсеров мало (команде нужен танк/AoE)? Если да → выбор билда сходится к миксу.
+export function measureBuildLandscape(baseCfg, opts = {}) {
+  const seconds = opts.sessionSeconds ?? baseCfg.meta.sessionSeconds;
+  const repeats = opts.repeats ?? 8;
+  const seed = opts.seed ?? 1;
+  const numD = opts.numD ?? 10, numV = opts.numV ?? 10;
+  const fractions = opts.fractions ?? [0.1, 0.25, 0.4, 0.55, 0.7, 0.85];
+
+  const rows = [];
+  for (const pf of fractions) {
+    let pI = 0, pN = 0, pA = 0, sI = 0, sN = 0, sA = 0, dark = 0;
+    for (let r = 0; r < repeats; r++) {
+      const cfg = withOverrides(baseCfg, { session: { numD, numV }, loadouts: { D: { pulseFraction: pf } } });
+      const world = createWorld(cfg, seed + Math.round(pf * 100) + r * 17);
+      const dt = cfg.world.dt;
+      while (world.running && world.time < seconds) stepWorld(world, dt);
+      dark += world.darkness;
+      for (const p of world.players) {
+        if (p.faction !== 'D') continue;
+        if (p.loadout.weapon === 'pulse') { pI += p.incomeTotal; pN++; pA += p.alive ? 1 : 0; }
+        else { sI += p.incomeTotal; sN++; sA += p.alive ? 1 : 0; }
+      }
+    }
+    const pulse = pI / Math.max(1, pN), shot = sI / Math.max(1, sN);
+    rows.push({
+      pf, pulseIncome: pulse, shotIncome: shot,
+      ratio: pulse / Math.max(1e-6, shot),
+      pulseAlive: pA / Math.max(1, pN), shotAlive: sA / Math.max(1, sN),
+      darkness: dark / repeats,
+    });
+  }
+  return rows;
+}
+
+// Один прогон с ТОЧНЫМ набором оружия D (массив weapons) → подушевой доход pulse/shot.
+function runSessionWithWeapons(baseCfg, weapons, numV, seed, seconds) {
+  const numD = weapons.length;
+  const cfg = withOverrides(baseCfg, { session: { numD, numV }, loadouts: { V: { areaFraction: 1 } } });
+  const world = createWorld(cfg, seed);
+  const ds = world.players.filter((p) => p.faction === 'D');
+  ds.forEach((p, i) => { p.loadout.weapon = weapons[i]; });   // переопределяем точно
+  const dt = cfg.world.dt;
+  while (world.running && world.time < seconds) stepWorld(world, dt);
+  let pI = 0, pN = 0, sI = 0, sN = 0;
+  for (const p of ds) {
+    if (p.loadout.weapon === 'pulse') { pI += p.incomeTotal; pN++; } else { sI += p.incomeTotal; sN++; }
+  }
+  return { payoffPulse: pI / Math.max(1, pN), payoffShot: sI / Math.max(1, sN), darkness: world.darkness };
+}
+
+function rechooseWeapon(weapons, payoffPulse, payoffShot, meta, rng) {
+  const aP = (Math.max(1e-6, payoffPulse) * meta.pulseAttract) ** meta.beta;
+  const aS = Math.max(1e-6, payoffShot) ** meta.beta;
+  const pPulse = aP / (aP + aS);
+  const next = weapons.slice();
+  for (let i = 0; i < next.length; i++) {
+    if (rng.next() > meta.switchFrac) continue;
+    next[i] = rng.next() < pPulse ? 'pulse' : 'shot';
+  }
+  if (!next.includes('pulse')) next[0] = 'pulse'; // ≥1 пульсер (иначе тёмный коллапс)
+  return next;
+}
+
+// Петля ВЫБОРА БИЛДА D (§8/§10): игроки между сессиями выбирают Пульс/Выстрел по доходу билда.
+// Сходится к здоровому миксу — или сваливается в all-shot (фрирайд)?
+export function runBuildDynamics(baseCfg, seed = 1) {
+  const meta = baseCfg.meta;
+  const rng = makeRng((seed ^ 0x1357) >>> 0);
+  const numD = 10, numV = 10;
+  let weapons = Array.from({ length: numD }, (_, i) => (i < numD / 2 ? 'pulse' : 'shot'));
+  const history = [];
+  for (let r = 0; r < meta.rounds; r++) {
+    const pf = weapons.filter((w) => w === 'pulse').length / numD;
+    const s = runSessionWithWeapons(baseCfg, weapons, numV, seed + r * 1009, meta.sessionSeconds);
+    history.push({ round: r, pf, payoffPulse: round(s.payoffPulse), payoffShot: round(s.payoffShot), darkness: round(s.darkness) });
+    weapons = rechooseWeapon(weapons, s.payoffPulse, s.payoffShot, meta, rng);
+  }
+  return { history, verdict: classifyBuild(history) };
+}
+
+export function classifyBuild(history) {
+  const f = history.map((h) => h.pf);
+  const tail = f.slice(Math.floor(f.length * 0.3));
+  const mean = avg(tail), lo = Math.min(...tail), hi = Math.max(...tail);
+  let label;
+  if (mean <= 0.15) label = 'COLLAPSE→all-shot';
+  else if (mean >= 0.85) label = 'COLLAPSE→all-pulse';
+  else label = 'MIX';
+  return { label, meanPf: round(mean), min: round(lo), max: round(hi) };
+}
+
+// Ветки хила V по ПЛОТНОСТИ боя (§2: одноцель=ранняя/разреженная фаза, площадь=поздняя/скученная;
+// "кривая синхронизирована с дугой сессии"). Свип numD=numV: где какая ветка тянет симбиоз.
+export function measureVHealByDensity(baseCfg, opts = {}) {
+  const seconds = opts.sessionSeconds ?? baseCfg.meta.sessionSeconds;
+  const repeats = opts.repeats ?? 6;
+  const seed = opts.seed ?? 1;
+  const densities = opts.densities ?? [2, 4, 6, 8, 10];
+  const rows = [];
+  for (const n of densities) {
+    const out = {};
+    for (const branch of ['area', 'single']) {
+      let dSurv = 0, dark = 0, vInc = 0;
+      for (let r = 0; r < repeats; r++) {
+        const cfg = withOverrides(baseCfg, { session: { numD: n, numV: n }, loadouts: { V: { areaFraction: branch === 'area' ? 1 : 0 } } });
+        const world = createWorld(cfg, seed + n * 31 + r);
+        const dt = cfg.world.dt;
+        while (world.running && world.time < seconds) stepWorld(world, dt);
+        const ds = world.players.filter((p) => p.faction === 'D');
+        dSurv += ds.filter((p) => p.alive).length / Math.max(1, ds.length);
+        dark += world.darkness;
+        const vs = world.players.filter((p) => p.faction === 'V');
+        vInc += vs.reduce((a, p) => a + p.incomeTotal, 0) / Math.max(1, vs.length);
+      }
+      out[branch] = { dSurv: dSurv / repeats, dark: dark / repeats, vInc: vInc / repeats };
+    }
+    rows.push({ n, area: out.area, single: out.single });
+  }
+  return rows;
+}
+
 // Выбор фракции: правило Льюса по подушевому доходу + привлекательность V (§9) + рацио.
 function rechoose(factions, payoffD, payoffV, meta, rng) {
   const N = factions.length;

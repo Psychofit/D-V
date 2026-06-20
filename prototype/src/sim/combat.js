@@ -20,7 +20,7 @@ export function fireProjectile(world, player, aimDir) {
 
   const cfg = world.cfg[player.faction];
   const isD = player.faction === 'D';
-  const area = !isD && cfg.areaHeal;            // V с прокачкой в площадь (§2)
+  const area = !isD && player.loadout.heal === 'area'; // билд V: площадь vs одноцель (§2/§8)
   const muzzle = add(player.pos, scale(d, player.radius + cfg.projectileRadius + 1));
 
   world.projectiles.push(makeProjectile(world, {
@@ -29,7 +29,8 @@ export function fireProjectile(world, player, aimDir) {
     ownerId: player.id,
     pos: muzzle,
     vel: scale(d, cfg.projectileSpeed),
-    power: isD ? player.shotDamage : player.healPower,
+    // одноцель — фокус-бёрст (§2: точечный): больше на цель, чем площадь, спасает фокус-цель
+    power: isD ? player.shotDamage : area ? player.healPower : player.healPower * cfg.singleHealFactor,
     radius: cfg.projectileRadius,
     // площадь бьёт ближе (§2: короче радиус, ближе к клинчу)
     range: isD ? cfg.shotRange : area ? cfg.shotRange * cfg.area.rangeFactor : cfg.shotRange,
@@ -79,7 +80,7 @@ export function pickEnemyTarget(world, enemy) {
     // провокатор перебивает цель: тянет охотника/дальнобоя на себя (защита V)
     const R = world.cfg.D.aggro.radius;
     for (const p of world.players) {
-      if (!p.alive || !p.provoker) continue;
+      if (!p.alive || !p.loadout.provoker) continue;
       const d = dist(enemy.pos, p.pos);
       if (d <= R && d < bd) { bd = d; best = p; }
     }
@@ -107,11 +108,37 @@ function killPlayer(world, p) {
   world.events.push({ t: world.time, type: 'death', faction: p.faction, id: p.id });
 }
 
+// Глушитель (§3): множитель хила в точке (1 вне зон; healSuppressFactor в зоне). В тьме зона шире.
+// resist ∈ [0,1] — насколько ветка хила ПРОБИВАЕТ подавление: 0 = давится полностью (площадь),
+// →1 = почти иммунна (точечный одноцель, §3 ниша). resist тянет множитель к 1.
+function suppressionAt(world, pos, resist = 0) {
+  let factor = 1;
+  for (const e of world.enemies) {
+    if (!e.alive || e.type !== 'suppressor') continue;
+    const r = e.suppressRadius * (1 + world.darkness * e.suppressRadiusDarkGain);
+    if (dist(pos, e.pos) <= r) factor = Math.min(factor, e.healSuppressFactor);
+  }
+  return factor + (1 - factor) * resist;
+}
+
+// Глушитель снимает метки V с врагов в своей зоне (§3) — бьёт по глаголу игры.
+export function updateSuppression(world) {
+  const supps = world.enemies.filter((e) => e.alive && e.type === 'suppressor');
+  if (!supps.length) return;
+  for (const e of world.enemies) {
+    if (!e.alive || e.markedUntil <= world.time) continue;
+    for (const s of supps) {
+      const r = s.suppressRadius * (1 + world.darkness * s.suppressRadiusDarkGain);
+      if (dist(e.pos, s.pos) <= r) { e.markedUntil = 0; break; }
+    }
+  }
+}
+
 // Атаки врагов. Тьма делает удары больнее и чаще (§3). Ближний бьёт в упор; дальнобой
 // шлёт снаряд по цели из своей зоны (в тьме чаще/больнее → сжимает V-кромку §3).
 export function updateEnemyAttacks(world, dt) {
   for (const e of world.enemies) {
-    if (!e.alive || e.attackCooldown > 0) continue;
+    if (!e.alive || e.attackCooldown > 0 || e.attackKind === 'none') continue;
     const target = pickEnemyTarget(world, e);
     if (!target) continue;
     const dmgMul = 1 + world.darkness * e.damageDarkGain;
@@ -192,11 +219,11 @@ function detonateArea(world, pr) {
   const a = world.cfg.V.area;
   const R = a.radius;
 
-  // лечим всех D в радиусе — платим за эффективные HP (оверхил = 0, §5)
+  // лечим всех D в радиусе — платим за эффективные HP (оверхил = 0, §5). Глушитель давит хил (§3).
   for (const p of world.players) {
     if (!p.alive || p.faction !== 'D' || dist(pr.pos, p.pos) > R) continue;
     const before = p.hp;
-    p.hp = Math.min(p.maxHp, p.hp + pr.power * a.healFactor);
+    p.hp = Math.min(p.maxHp, p.hp + pr.power * a.healFactor * suppressionAt(world, p.pos));
     if (owner) payEffectiveHeal(world, owner, p.hp - before);
   }
   // жжём + метим всех врагов в радиусе (по толстяку — потолок толщины §2)
@@ -214,7 +241,10 @@ function detonateArea(world, pr) {
 // Общая смерть врага: пометить, посчитать толстяков, заплатить добившему.
 function killEnemy(world, enemy, killer) {
   enemy.alive = false;
-  if (enemy.type === 'fat') world.stats.fatKilled++;
+  if (enemy.type === 'fat') {
+    world.stats.fatKilled++;
+    if (killer && killer.kind === 'player') killer.fatKills++; // на игрока (ачивка §8)
+  }
   payKill(world, killer); // валюта добившему (§4, §5)
 }
 
@@ -238,41 +268,23 @@ function resolveDamageProjectile(world, pr) {
 }
 
 function resolveHealProjectile(world, pr) {
-  // V-снаряд: ближайшая задетая цель среди врагов (жечь) и СОЮЗНЫХ D (лечить).
-  // Что окажется на пути первым — то и получит эффект (позиционная драма V, §2).
-  let hit = null, best = Infinity, isEnemy = false;
-  for (const e of world.enemies) {
-    if (!e.alive) continue;
-    const dd = dist(pr.pos, e.pos);
-    if (dd <= pr.radius + e.radius && dd < best) { best = dd; hit = e; isEnemy = true; }
-  }
+  // Одноцель V (§2): ТОЧНЫЙ адресный хил — летит СКВОЗЬ врагов к раненому D (не блокируется,
+  // в отличие от площади). Размен §2: дальность/точность/безопасность ↔ охват. Игнорирует
+  // врагов (это не "лечить-или-жечь", а прицельный хил), полный хил одной цели, V держится далеко.
+  let hit = null, best = Infinity;
   for (const p of world.players) {
-    if (!p.alive || p.faction !== 'D') continue; // лечим только D (§5)
+    if (!p.alive || p.faction !== 'D') continue;
     const dd = dist(pr.pos, p.pos);
-    if (dd <= pr.radius + p.radius && dd < best) { best = dd; hit = p; isEnemy = false; }
+    if (dd <= pr.radius + p.radius && dd < best) { best = dd; hit = p; }
   }
   if (!hit) return;
 
   const owner = world.findPlayer(pr.ownerId);
   pr.alive = false;
-
-  if (isEnemy) {
-    // V СТАВИТ МЕТКУ на врага (§2): почти не жжёт сам, но даёт D бить сильнее.
-    // Так V добивает толстяка не своим уроном, а множителем урона D.
-    hit.markedUntil = world.time + world.cfg.mark.duration;
-    // потолок по толщине (§2): по толстяку burn V почти ноль — он за его потолком
-    const thickness = hit.type === 'fat' ? world.cfg.V.fatBurnFactor : 1;
-    const burn = pr.power * world.cfg.V.burnFactor * thickness;
-    hit.hp -= burn;
-    if (owner) owner.totalDamageDone += burn;
-    if (hit.hp <= 0) killEnemy(world, hit, owner);
-  } else {
-    // лечит D — платим ТОЛЬКО за эффективные HP (оверхил = 0, §5)
-    const before = hit.hp;
-    hit.hp = Math.min(hit.maxHp, hit.hp + pr.power);
-    const effective = hit.hp - before;
-    if (owner) payEffectiveHeal(world, owner, effective);
-  }
+  const before = hit.hp;
+  // одноцель ПРОБИВАЕТ зону глушителя (§3 ниша одиночки)
+  hit.hp = Math.min(hit.maxHp, hit.hp + pr.power * suppressionAt(world, hit.pos, world.cfg.V.singleSuppressResist));
+  if (owner) payEffectiveHeal(world, owner, hit.hp - before);
 }
 
 // Снять мёртвых и улетевшие снаряды.

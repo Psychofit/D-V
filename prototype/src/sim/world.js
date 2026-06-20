@@ -12,7 +12,7 @@ import { updateDarkness } from './darkness.js';
 import { updateSpawner } from './spawner.js';
 import { updateAI } from './ai.js';
 import {
-  updateCooldowns, updateEnemyAttacks, updateProjectiles, sweepDead,
+  updateCooldowns, updateEnemyAttacks, updateProjectiles, updateSuppression, sweepDead,
 } from './combat.js';
 import { clamp } from '../core/vec2.js';
 
@@ -58,10 +58,17 @@ export function createWorld(cfg, seed = 1) {
   cluster('D', { x: m, y: H - m }, cfg.session.numD);   // нижний-левый угол
   cluster('V', { x: W - m, y: m }, cfg.session.numV);   // верхний-правый угол
 
-  // §7: часть D берёт аггро-роль (провокаторы стягивают V-целящих врагов на себя)
-  const ds = world.players.filter((p) => p.faction === 'D');
-  const provokers = Math.round(ds.length * cfg.D.aggro.provokerFraction);
-  for (let i = 0; i < provokers; i++) ds[i].provoker = true;
+  // §8: боты приносят билды по распределению cfg.loadouts (выбор сайдгрейдов до старта).
+  // Выбор независим на игрока → в сессии живёт смесь билдов.
+  const lo = cfg.loadouts;
+  for (const p of world.players) {
+    if (p.faction === 'D') {
+      p.loadout.weapon = world.rng.next() < lo.D.pulseFraction ? 'pulse' : 'shot';
+      p.loadout.provoker = world.rng.next() < lo.D.provokerFraction;
+    } else {
+      p.loadout.heal = world.rng.next() < lo.V.areaFraction ? 'area' : 'single';
+    }
+  }
   return world;
 }
 
@@ -121,6 +128,7 @@ export function stepWorld(world, dt) {
   integrate(world, dt);        // движение игроков и врагов
   updateEnemyAttacks(world, dt);
   updateProjectiles(world, dt);// движение снарядов + попадания + выплаты
+  updateSuppression(world);    // §3 глушитель: снять метки V в зоне (хил давится в самом хиле)
   applyFury(world, dt);        // §6 вспышка
   sweepDead(world);
   checkCrash(world);

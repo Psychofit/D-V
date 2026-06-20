@@ -29,9 +29,12 @@ export function makePlayer(world, faction, pos) {
     totalHealDone: 0,        // эффективный хил (только V)
     totalDamageDone: 0,
     kills: 0,
+    fatKills: 0,             // убитых толстяков (триггер ачивки §8)
     alive: true,
     controlled: false,       // захвачен человеком (браузер)
-    provoker: false,         // взял аггро-роль §7 (стягивает V-целящих врагов на себя)
+    // Билд игрока (§8): сайдгрейды, выбранные до старта. Назначается в world по распределению.
+    //   D: { weapon: 'pulse'|'shot', provoker: bool }   V: { heal: 'area'|'single' }
+    loadout: faction === 'D' ? { weapon: 'pulse', provoker: false } : { heal: 'area' },
     aim: { x: 1, y: 0 },     // направление прицела (для управляемого режима)
     wantShoot: false,
     pulseFx: null,           // транзиентный след пульса D (для рендера)
@@ -40,7 +43,10 @@ export function makePlayer(world, faction, pos) {
 
 // Типы врага (§3): 'swarm' рой · 'fat' толстяк · 'hunter' охотник · 'ranged' дальнобой.
 // Боевые статы копируются на сущность, чтобы combat/ai не разветвлялись по типу.
-const ENEMY_CFG = { swarm: 'enemy', fat: 'enemyFat', hunter: 'enemyHunter', ranged: 'enemyRanged' };
+const ENEMY_CFG = {
+  swarm: 'enemy', fat: 'enemyFat', hunter: 'enemyHunter',
+  ranged: 'enemyRanged', suppressor: 'enemySuppressor',
+};
 
 export function makeEnemy(world, pos, type = 'swarm') {
   const cfg = world.cfg[ENEMY_CFG[type] || 'enemy'];
@@ -65,6 +71,10 @@ export function makeEnemy(world, pos, type = 'swarm') {
     fireRange: cfg.fireRange ?? 0,               // для дальнобоя
     projectileSpeed: cfg.projectileSpeed ?? 0,
     projectileRadius: cfg.projectileRadius ?? 5,
+    suppressRadius: cfg.suppressRadius ?? 0,     // для глушителя (§3)
+    suppressRadiusDarkGain: cfg.suppressRadiusDarkGain ?? 0,
+    healSuppressFactor: cfg.healSuppressFactor ?? 1,
+    standoff: cfg.standoff ?? 0,
     attackCooldown: 0,
     markedUntil: 0,          // метка V (§2): D бьёт сильнее, пока world.time < markedUntil
     targetId: null,

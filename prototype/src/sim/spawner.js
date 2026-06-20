@@ -38,14 +38,16 @@ export function updateSpawner(world, dt) {
 }
 
 // Состав (§3): вес типа рампится от 0 (до порога прогресса) до weightMax; рой — базовый вес 1.
+// Обобщён по ключам spawn.mix — новые типы добавляются только в конфиге.
 function pickType(world, progress) {
   const ramp = (m) => (progress < m.start ? 0 : m.weightMax * (progress - m.start) / (1 - m.start));
   const mix = world.cfg.spawn.mix;
-  const weights = { swarm: 1, fat: ramp(mix.fat), hunter: ramp(mix.hunter), ranged: ramp(mix.ranged) };
-  const total = weights.swarm + weights.fat + weights.hunter + weights.ranged;
+  const types = Object.keys(mix);
+  const weights = types.map((t) => ramp(mix[t]));
+  const total = 1 + weights.reduce((a, b) => a + b, 0); // swarm — базовый вес 1
   let roll = world.rng.next() * total;
-  for (const type of ['fat', 'hunter', 'ranged']) {
-    if ((roll -= weights[type]) < 0) return type;
+  for (let i = 0; i < types.length; i++) {
+    if ((roll -= weights[i]) < 0) return types[i];
   }
   return 'swarm';
 }
