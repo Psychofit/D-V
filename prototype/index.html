@@ -22,15 +22,45 @@
   button { background: #1d1d27; color: #d6d6e0; border: 1px solid #333; border-radius: 6px;
     padding: 6px 10px; cursor: pointer; font: inherit; }
   button:hover { background: #262633; }
+  button.on { border-color: #3e9bff; color: #cfe3ff; background: #1a2740; }
   label.toggle { display: flex; gap: 6px; align-items: center; cursor: pointer;
     background: #1d1d27; border: 1px solid #333; border-radius: 6px; padding: 6px 10px; }
-  .dv-panel { background: #12121a; border: 1px solid #24242e; border-radius: 8px; padding: 12px; }
+  .dv-panel { background: linear-gradient(180deg, #13121c, #0e0d15); border: 1px solid #262433;
+    border-radius: 10px; padding: 12px 13px; box-shadow: inset 0 1px 0 #ffffff08, 0 4px 18px #0006; }
+  .dv-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px; }
+  .dv-title { font-size: 11px; letter-spacing: 2px; color: #8a8aa0; text-transform: uppercase; }
+  .dv-dk { font-size: 11px; color: #6f6f86; } .dv-dk b { color: #e07a86; font-size: 13px; }
+  /* канат-тяга: центр — паритет, вправо тьма (D), влево свет (V) */
+  .dv-tug { display: flex; align-items: center; gap: 7px; margin: 2px 0 11px; }
+  .dv-tug-end { font-size: 9px; letter-spacing: .4px; white-space: nowrap; opacity: .85; }
+  .dv-tug-end.d { color: #e5666b; } .dv-tug-end.v { color: #5fbfe6; }
+  .dv-tug-track { position: relative; flex: 1; height: 12px; border-radius: 6px; overflow: hidden;
+    background: #16161f; box-shadow: inset 0 0 0 1px #ffffff0c; }
+  .dv-tug-half { position: absolute; top: 0; height: 100%; width: 50%; }
+  .dv-tug-half.v { left: 0; background: linear-gradient(90deg, #1d3344, #161f2b); }
+  .dv-tug-half.d { right: 0; background: linear-gradient(90deg, #241620, #3a1820); }
+  .dv-tug-fill { position: absolute; top: 0; height: 100%; transition: left .12s, width .12s; }
+  .dv-tug-fill.d { background: linear-gradient(90deg, #7a232a, #e5484d); box-shadow: 0 0 8px #e5484d99; }
+  .dv-tug-fill.v { background: linear-gradient(90deg, #2c74c8, #54b6ff); box-shadow: 0 0 8px #54b6ff99; }
+  .dv-tug-center { position: absolute; left: 50%; top: -1px; width: 1px; height: 14px;
+    background: #c8c8dc; opacity: .55; transform: translateX(-.5px); }
+  .dv-tug-knot { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; border-radius: 50%;
+    background: #fff; transform: translate(-50%, -50%); box-shadow: 0 0 6px #fff9; transition: left .12s; }
   .dv-row { display: flex; justify-content: space-between; margin: 3px 0; }
-  .dv-row.dv-dim { color: #888; }
-  .dv-bar { height: 10px; background: #23232e; border-radius: 5px; overflow: hidden; margin: 4px 0 8px; }
-  #dv-darkbar { height: 100%; width: 0; background: linear-gradient(90deg, #6a6a80, #e5484d); transition: width .1s; }
-  #dv-chart { width: 100%; margin-top: 8px; border-radius: 6px; background: #0d0d12; }
-  .dv-cap { color: #666; font-size: 11px; margin-top: 6px; }
+  .dv-row b.d { color: #e5666b; } .dv-row b.v { color: #5fbfe6; }
+  .dv-dim { color: #8a8a9c; }
+  .dv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; margin-top: 8px;
+    padding-top: 8px; border-top: 1px solid #ffffff0c; }
+  .dv-grid .dv-row { margin: 2px 0; font-size: 12px; }
+  #dv-chart { width: 100%; display: block; margin-top: 8px; border-radius: 6px;
+    box-shadow: inset 0 0 0 1px #ffffff0a; }
+  .dv-cap { color: #5a5a6a; font-size: 10px; line-height: 1.35; margin-top: 6px; }
+  .dv-status-row { display: flex; justify-content: space-between; align-items: center; margin-top: 11px; }
+  .dv-pill { padding: 3px 10px; border-radius: 11px; font-size: 12px; font-weight: 600;
+    background: #16241a; color: #5ee08a; border: 1px solid #2f6b3a66; }
+  .dv-pill.bad { background: #2a1416; color: #ff7a7f; border-color: #6b2f3366; }
+  .dv-pill.fury { background: #2e1410; color: #ff9a55; border-color: #6b3a2f99; animation: furypulse 1s infinite; }
+  @keyframes furypulse { 50% { background: #48201a; } }
   .hint { color: #777; font-size: 12px; max-width: 620px; text-align: center; }
   .hint kbd { background: #1d1d27; border: 1px solid #333; border-radius: 4px; padding: 1px 5px; }
   /* --- меню билда / ачивки (§8) --- */
@@ -78,6 +108,7 @@
         <button id="btn-pause">пауза / пробел</button>
         <button id="btn-speed">скорость ×1</button>
         <button id="btn-reset">рестарт</button>
+        <button id="btn-sound">звук: выкл</button>
       </div>
       <label class="toggle"><input type="checkbox" id="chk-responsive"> отзывчивый D (§10)</label>
       <div id="hud"></div>
