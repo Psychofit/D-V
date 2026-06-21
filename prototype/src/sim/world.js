@@ -81,6 +81,19 @@ function maybeSpawnBoss(world) {
   if (world.boss || world.bossDefeated || !world.cfg.boss) return;
   if (world.totalEarned >= world.cfg.boss.appearAtPoints) {
     world.boss = makeBoss(world);
+    // отбросить ВСЕХ игроков из центра к стенам — чтобы никто не застрял внутри босса
+    const W = world.cfg.world.width, H = world.cfg.world.height, cx = W / 2, cy = H / 2;
+    const safe = world.boss.rings[world.boss.rings.length - 1].radius + 180;
+    for (const p of world.players) {
+      if (!p.alive) continue;
+      let dx = p.pos.x - cx, dy = p.pos.y - cy, d = Math.hypot(dx, dy);
+      if (d < 1) { const a = world.rng.next() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); d = 1; }
+      const nd = Math.max(d, safe) + 520;          // мощный отброс наружу (к стенам)
+      p.pos = {
+        x: clamp(cx + (dx / d) * nd, p.radius, W - p.radius),
+        y: clamp(cy + (dy / d) * nd, p.radius, H - p.radius),
+      };
+    }
     world.events.push({ t: world.time, type: 'boss-appear', id: world.boss.id });
   }
 }

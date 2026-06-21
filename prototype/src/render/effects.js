@@ -147,7 +147,12 @@ export function createEffects() {
 
     // §босс: появление, гибель, попадания/щит
     const b = world.boss;
-    if (b && prevBossId !== b.id) { prevBossId = b.id; evs.push({ type: 'boss-appear' }); }
+    if (b && prevBossId !== b.id) {                  // появление: волна-отброс + тряска
+      prevBossId = b.id;
+      repulseShock(world.cfg.world.width / 2, world.cfg.world.height / 2, b.rings[b.rings.length - 1].radius + 120);
+      shake = Math.max(shake, 11);
+      evs.push({ type: 'boss-appear' });
+    }
     if (!b && prevBossId !== null) {
       if (world.bossDefeated) {                        // повержен → бёрст смерти в центре
         const cx = world.cfg.world.width / 2, cy = world.cfg.world.height / 2;
