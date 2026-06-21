@@ -108,6 +108,23 @@ function killPlayer(world, p) {
   world.events.push({ t: world.time, type: 'death', faction: p.faction, id: p.id });
 }
 
+// Разлом-опасность (§7 анти-кемп): центр ранит ЗАДЕРЖАВШИХСЯ игроков (враги невредимы —
+// рождены разломом). В тьме шире/злее. При живом боссе неактивен (центр занимает босс).
+export function updateRift(world, dt) {
+  const rc = world.cfg.rift;
+  if (!rc || world.boss) return;
+  const c = { x: world.cfg.world.width / 2, y: world.cfg.world.height / 2 };
+  const r = rc.radius * (1 + world.darkness * rc.radiusDarkGain);
+  const dmg = rc.damagePerSec * (1 + world.darkness * rc.damageDarkGain) * dt;
+  for (const p of world.players) {
+    if (!p.alive) continue;
+    if (dist(p.pos, c) <= r + p.radius) {
+      p.hp -= dmg;
+      if (p.hp <= 0) killPlayer(world, p);
+    }
+  }
+}
+
 // Глушитель (§3): множитель хила в точке (1 вне зон; healSuppressFactor в зоне). В тьме зона шире.
 // resist ∈ [0,1] — насколько ветка хила ПРОБИВАЕТ подавление: 0 = давится полностью (площадь),
 // →1 = почти иммунна (точечный одноцель, §3 ниша). resist тянет множитель к 1.

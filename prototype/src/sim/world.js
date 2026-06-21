@@ -12,7 +12,7 @@ import { updateDarkness } from './darkness.js';
 import { updateSpawner } from './spawner.js';
 import { updateAI } from './ai.js';
 import {
-  updateCooldowns, updateEnemyAttacks, updateProjectiles, updateSuppression, sweepDead,
+  updateCooldowns, updateEnemyAttacks, updateProjectiles, updateSuppression, sweepDead, updateRift,
 } from './combat.js';
 import { clamp } from '../core/vec2.js';
 
@@ -36,6 +36,8 @@ export function createWorld(cfg, seed = 1) {
     running: true,
     status: 'running',  // running | collapse-D | collapse-V | collapse-both
     fury: false,        // вспышка "все V мертвы" (§6)
+    boss: null,         // активный босс (§босс) — занимает центр, гасит разлом-опасность
+    totalEarned: 0,     // валовой доход популяции («общие очки») — триггер появления босса
     events: [],
     stats: { vIncomeAccum: 0, fatSpawned: 0, fatKilled: 0, spawnedByType: {} },
     findPlayer(id) {
@@ -127,6 +129,7 @@ export function stepWorld(world, dt) {
   updateAI(world, dt);         // боты: движение, выстрелы, вложения
   integrate(world, dt);        // движение игроков и врагов
   updateEnemyAttacks(world, dt);
+  updateRift(world, dt);       // §7: центр-разлом ранит задержавшихся (анти-кемп)
   updateProjectiles(world, dt);// движение снарядов + попадания + выплаты
   updateSuppression(world);    // §3 глушитель: снять метки V в зоне (хил давится в самом хиле)
   applyFury(world, dt);        // §6 вспышка

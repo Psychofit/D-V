@@ -43,6 +43,21 @@ export function createRenderer(canvas) {
     ctx.lineWidth = 1; disc(cx, cy, jitter, null, ctx.strokeStyle, 1);
   }
 
+  function riftHazard(cx, cy, darkness, time, rc) {   // §7: видимо ОПАСНАЯ зона разлома (анти-кемп)
+    const r = rc.radius * (1 + darkness * rc.radiusDarkGain);
+    const pulse = 0.5 + 0.5 * Math.sin(time * 3);
+    const g = ctx.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
+    g.addColorStop(0, 'rgba(229,72,77,0)');
+    g.addColorStop(0.7, `rgba(229,72,77,${0.04 + darkness * 0.06})`);
+    g.addColorStop(1, `rgba(255,80,90,${0.1 + darkness * 0.12})`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(time * 0.5);   // пульсирующая опасная кромка
+    ctx.strokeStyle = `rgba(255,90,100,${0.4 + pulse * 0.35})`;
+    ctx.lineWidth = 2; ctx.setLineDash([10, 8]);
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
+
   function vignette(W, H, darkness) {
     const a = 0.12 + darkness * 0.6;                  // тьма «сжимается» с краёв
     const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.32, W / 2, H / 2, Math.hypot(W, H) * 0.6);
@@ -187,6 +202,7 @@ export function createRenderer(canvas) {
     paintBackground(W, H, d);
     const cx = W / 2, cy = H / 2;
     centerRift(cx, cy, d, world.time, world.cfg.spawn.centerJitter);
+    if (!world.boss && world.cfg.rift) riftHazard(cx, cy, d, world.time, world.cfg.rift);
 
     // зоны глушителя (§3) — мёртвая зона хила
     for (const e of world.enemies) {
