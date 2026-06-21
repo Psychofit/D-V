@@ -68,11 +68,19 @@
   .hint kbd { background: #1d1d27; border: 1px solid #383848; border-radius: 4px; padding: 1px 6px;
     color: #cdd; font-size: 11px; }
   /* --- меню билда / ачивки (§8) --- */
-  #menu-overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+  #menu-overlay, #upgrade-overlay { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
     background: radial-gradient(62% 55% at 50% 42%, #1b0f1aee, #06060bf5); backdrop-filter: blur(4px); }
-  #menu-card { position: relative; width: min(580px, 92vw); padding: 24px 28px 22px;
+  #upgrade-overlay { display: none; }
+  #menu-card, #upgrade-card { position: relative; width: min(580px, 92vw); padding: 24px 28px 22px;
     background: linear-gradient(180deg, #14131e, #0d0c14); border: 1px solid #2a2838; border-radius: 14px;
     box-shadow: inset 0 1px 0 #ffffff0e, 0 18px 70px #000d; }
+  /* передышка — прокачка статов после победы над боссом */
+  .up-opts { display: flex; gap: 10px; margin-top: 6px; }
+  .up-opt { flex: 1; padding: 16px 14px; cursor: pointer; user-select: none; text-align: center;
+    background: #16151f; border: 1px solid #2c2c3a; border-radius: 11px; transition: .12s; }
+  .up-opt:hover { background: #1f1e2b; border-color: #6b6bff; transform: translateY(-2px); }
+  .up-opt b { display: block; font-size: 15px; color: #e6e6f0; margin-bottom: 5px; }
+  .up-opt small { color: #9a9ab0; font-size: 11px; line-height: 1.3; }
   .menu-brand { font-size: 30px; font-weight: 800; letter-spacing: 4px; line-height: 1; margin-bottom: 5px; }
   .menu-brand b { color: #e5484d; } .menu-brand i { color: #54b6ff; font-style: normal; } .menu-brand span { color: #46465a; font-weight: 400; }
   .menu-sub { color: #8a8a9c; font-size: 12px; margin: 0 0 16px; line-height: 1.45; }
@@ -160,6 +168,13 @@
         <button id="btn-start" class="primary">В бой →</button>
         <button id="btn-reset-progress">сбросить прогресс</button>
       </div>
+    </div>
+  </div>
+  <div id="upgrade-overlay">
+    <div id="upgrade-card">
+      <div class="menu-brand" style="font-size: 24px; letter-spacing: 2px;">Передышка</div>
+      <p class="menu-sub">«Сомнения» повержены. Переведи дух и усиль себя — выбери одно.</p>
+      <div id="upgrade-content"></div>
     </div>
   </div>
   <div id="toasts"></div>

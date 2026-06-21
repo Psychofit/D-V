@@ -206,11 +206,16 @@ export function createRenderer(canvas) {
   }
 
   function drawBoss(world) {
-    const b = world.boss, x = b.pos.x, y = b.pos.y, t = world.time, N = 11;
-    ctx.beginPath();                                 // извивающееся тело-многогранник
+    const b = world.boss, x = b.pos.x, y = b.pos.y, t = world.time, N = 48;
+    ctx.beginPath();                                 // гладко извивающееся тело (амёба)
     for (let i = 0; i <= N; i++) {
       const a = (i / N) * Math.PI * 2;
-      const rr = b.radius * (1 + 0.12 * Math.sin(t * 2 + i * 0.9) + 0.06 * Math.sin(t * 3.3 - i));
+      // радиус как функция УГЛА на ЦЕЛЫХ гармониках → шов на a=2π сходится с a=0 без разрыва;
+      // время двигает фазы гармоник → плавное извивание, а не дёрганые вершины
+      const rr = b.radius * (1
+        + 0.10 * Math.sin(3 * a + t * 1.3)
+        + 0.06 * Math.sin(5 * a - t * 1.0)
+        + 0.04 * Math.sin(2 * a + t * 0.6));
       const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
       i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
     }

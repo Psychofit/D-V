@@ -28,11 +28,13 @@ const audio = createAudio();
 const hud = createHud(document.getElementById('hud'));
 
 let world, recorder;
+let breatherShown = false, breatherAt = 0; // §передышка: окно прокачки после босса (раз за сессию)
 function reset() {
   world = createWorld(cfg, (Math.random() * 1e9) | 0);
   recorder = createRecorder(0.5);
   recorder.maybeSample(world);
   effects.reset();   // сбросить диффы прошлого мира → без всплеска ложных смертей/звуков
+  breatherShown = false; breatherAt = 0;
 }
 reset();
 
@@ -203,6 +205,30 @@ function startGame() {
   paused = false;
 }
 
+// --- передышка: прокачка статов после победы над боссом (§прокачка) ----------
+// Пока — общие статы (скорость и т.п.), чтобы обкатать саму систему. Применяется к
+// управляемому игроку. Открывается раз за сессию, через паузу-передышку.
+const UPGRADES = [
+  { id: 'speed', title: 'Скорость', sub: '+15% к скорости передвижения', apply: (p) => { p.speed *= 1.15; } },
+  { id: 'vitality', title: 'Живучесть', sub: '+30 к макс. HP, полное лечение', apply: (p) => { p.maxHp += 30; p.hp = p.maxHp; } },
+  { id: 'power', title: 'Сила', sub: '+20% урона (D) / силы хила (V)', apply: (p) => { if (p.faction === 'D') p.shotDamage *= 1.2; else p.healPower *= 1.2; } },
+];
+const upgradeOverlay = document.getElementById('upgrade-overlay');
+function renderUpgrade() {
+  const el = document.getElementById('upgrade-content');
+  el.innerHTML = '<div class="up-opts">' + UPGRADES.map((u) =>
+    `<div class="up-opt" data-up="${u.id}"><b>${u.title}</b><small>${u.sub}</small></div>`).join('') + '</div>';
+  el.querySelectorAll('.up-opt').forEach((c) => { c.onclick = () => chooseUpgrade(c.dataset.up); });
+}
+function openBreather() { paused = true; upgradeOverlay.style.display = 'flex'; renderUpgrade(); }
+function chooseUpgrade(id) {
+  const u = UPGRADES.find((x) => x.id === id);
+  const p = controlledPlayer();
+  if (u && p) u.apply(p);
+  upgradeOverlay.style.display = 'none';
+  paused = false;
+}
+
 function toast(a) {
   const c = document.getElementById('toasts');
   const d = document.createElement('div');
@@ -243,7 +269,10 @@ function frame(now) {
     trackAchievements(); // §8: засчитать достижения игрока, открыть сайдгрейды
     const evs = effects.observe(world, controlledPlayer()?.id); // импакт диффингом состояния
     audio.handle(evs);                                          // те же события — в звук
+    // §передышка: после гибели босса — окно прокачки (с задержкой 1.2с, чтобы доиграл взрыв)
+    if (world.bossDefeated && !breatherShown && breatherAt === 0) breatherAt = performance.now() + 1200;
   }
+  if (breatherAt && !breatherShown && performance.now() >= breatherAt) { breatherShown = true; breatherAt = 0; openBreather(); }
   audio.update(world);   // гул тьмы следует за darkness (звучит и на паузе)
   effects.update(real);
   renderer.draw(world, effects);
