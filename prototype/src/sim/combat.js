@@ -11,6 +11,7 @@
 import { add, sub, scale, dist, len, norm } from '../core/vec2.js';
 import { makeProjectile } from './entities.js';
 import { payKill, payEffectiveHeal } from './economy.js';
+import { tryBossHit } from './boss.js';
 
 // Выстрел игрока в направлении aimDir (единичный вектор). Уважает кулдаун.
 export function fireProjectile(world, player, aimDir) {
@@ -108,6 +109,23 @@ function killPlayer(world, p) {
   world.events.push({ t: world.time, type: 'death', faction: p.faction, id: p.id });
 }
 
+// Разлом-опасность (§7 анти-кемп): центр ранит ЗАДЕРЖАВШИХСЯ игроков (враги невредимы —
+// рождены разломом). В тьме шире/злее. При живом боссе неактивен (центр занимает босс).
+export function updateRift(world, dt) {
+  const rc = world.cfg.rift;
+  if (!rc || world.boss) return;
+  const c = { x: world.cfg.world.width / 2, y: world.cfg.world.height / 2 };
+  const r = rc.radius * (1 + world.darkness * rc.radiusDarkGain);
+  const dmg = rc.damagePerSec * (1 + world.darkness * rc.damageDarkGain) * dt;
+  for (const p of world.players) {
+    if (!p.alive) continue;
+    if (dist(p.pos, c) <= r + p.radius) {
+      p.hp -= dmg;
+      if (p.hp <= 0) killPlayer(world, p);
+    }
+  }
+}
+
 // Глушитель (§3): множитель хила в точке (1 вне зон; healSuppressFactor в зоне). В тьме зона шире.
 // resist ∈ [0,1] — насколько ветка хила ПРОБИВАЕТ подавление: 0 = давится полностью (площадь),
 // →1 = почти иммунна (точечный одноцель, §3 ниша). resist тянет множитель к 1.
@@ -150,12 +168,33 @@ export function updateEnemyAttacks(world, dt) {
         fireEnemyProjectile(world, e, target, dmgMul);
         e.attackCooldown = e.attackInterval / spdMul;
       }
+    } else if (e.attackKind === 'repulse') {
+      if (d <= e.repulseRadius) {                      // толстяк: радиальный отброс (§3)
+        repulseWave(world, e, dmgMul);
+        e.attackCooldown = e.attackInterval / spdMul;
+      }
     } else if (d <= e.radius + target.radius + e.attackRange) {
       target.hp -= e.contactDamage * dmgMul;
       e.attackCooldown = e.attackInterval / spdMul;
       if (target.hp <= 0) killPlayer(world, target);
     }
   }
+}
+
+// Репульс толстяка (§3): радиальная волна — отбрасывает ВСЕХ игроков в радиусе наружу и
+// бьёт, расчищая путь союзникам вглубь. Отброс — мгновенное смещение позиции (integrate
+// зажмёт в границы; может впихнуть в опасный разлом — честное эмерджентное взаимодействие).
+function repulseWave(world, e, dmgMul) {
+  for (const p of world.players) {
+    if (!p.alive) continue;
+    const pd = dist(e.pos, p.pos);
+    if (pd > e.repulseRadius) continue;
+    const out = pd > 1 ? norm(sub(p.pos, e.pos)) : { x: 1, y: 0 };
+    p.pos = add(p.pos, scale(out, e.repulseForce));
+    p.hp -= e.repulseDamage * dmgMul;
+    if (p.hp <= 0) killPlayer(world, p);
+  }
+  e.repulseFx = world.time; // след для эффектов/звука (диффинг в effects.js)
 }
 
 function fireEnemyProjectile(world, enemy, target, dmgMul) {
@@ -189,6 +228,9 @@ export function updateProjectiles(world, dt) {
     const step = scale(pr.vel, dt);
     pr.pos = add(pr.pos, step);
     pr.traveled += Math.hypot(step.x, step.y);
+
+    // §босс: снаряд игрока у колец босса — гасится щитом или ранит ядро через брешь своего цвета
+    if (world.boss && (pr.faction === 'D' || pr.faction === 'V') && tryBossHit(world, pr)) continue;
 
     if (pr.effect === 'area') { updateAreaProjectile(world, pr); continue; }
     if (pr.traveled >= pr.range) { pr.alive = false; continue; }

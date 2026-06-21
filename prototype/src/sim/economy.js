@@ -23,6 +23,7 @@ export function payKill(world, killer) {
   killer.incomeTotal += amount;
   killer.incomeKill += amount;
   killer.kills += 1;
+  world.totalEarned += amount; // «общие очки» популяции (триггер босса §босс)
 }
 
 // Выплата V за эффективный хил. effectiveHP — реально восстановленные HP (без оверхила).
@@ -34,6 +35,7 @@ export function payEffectiveHeal(world, healer, effectiveHP) {
   healer.incomeHeal += amount;
   healer.totalHealDone += effectiveHP;
   world.stats.vIncomeAccum += amount; // для телеметрии (доход V во времени)
+  world.totalEarned += amount;        // «общие очки» популяции (триггер босса §босс)
 }
 
 // Может ли игрок купить ноду прямо сейчас.

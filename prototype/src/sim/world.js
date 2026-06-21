@@ -7,12 +7,13 @@
 // =============================================================================
 
 import { makeRng } from '../core/rng.js';
-import { makePlayer } from './entities.js';
+import { makePlayer, makeBoss } from './entities.js';
 import { updateDarkness } from './darkness.js';
 import { updateSpawner } from './spawner.js';
+import { updateBoss } from './boss.js';
 import { updateAI } from './ai.js';
 import {
-  updateCooldowns, updateEnemyAttacks, updateProjectiles, updateSuppression, sweepDead,
+  updateCooldowns, updateEnemyAttacks, updateProjectiles, updateSuppression, sweepDead, updateRift,
 } from './combat.js';
 import { clamp } from '../core/vec2.js';
 
@@ -36,6 +37,9 @@ export function createWorld(cfg, seed = 1) {
     running: true,
     status: 'running',  // running | collapse-D | collapse-V | collapse-both
     fury: false,        // вспышка "все V мертвы" (§6)
+    boss: null,         // активный босс (§босс) — занимает центр, гасит разлом-опасность
+    bossDefeated: false,// босс уже повержен в этой сессии (повторно не появится)
+    totalEarned: 0,     // валовой доход популяции («общие очки») — триггер появления босса
     events: [],
     stats: { vIncomeAccum: 0, fatSpawned: 0, fatKilled: 0, spawnedByType: {} },
     findPlayer(id) {
@@ -70,6 +74,15 @@ export function createWorld(cfg, seed = 1) {
     }
   }
   return world;
+}
+
+// §босс: «Сомнения» появляются при достижении популяцией порога «общих очков».
+function maybeSpawnBoss(world) {
+  if (world.boss || world.bossDefeated || !world.cfg.boss) return;
+  if (world.totalEarned >= world.cfg.boss.appearAtPoints) {
+    world.boss = makeBoss(world);
+    world.events.push({ t: world.time, type: 'boss-appear', id: world.boss.id });
+  }
 }
 
 function integrate(world, dt) {
@@ -122,11 +135,14 @@ export function stepWorld(world, dt) {
   world.time += dt;
 
   updateDarkness(world, dt);   // канат → darkness
-  updateSpawner(world, dt);    // враги из центра
+  maybeSpawnBoss(world);       // §босс: появление при «общих очках» (валовой доход)
+  if (!world.boss) updateSpawner(world, dt); // босс занимает центр → обычный спавн молчит
   updateCooldowns(world, dt);
   updateAI(world, dt);         // боты: движение, выстрелы, вложения
   integrate(world, dt);        // движение игроков и врагов
   updateEnemyAttacks(world, dt);
+  updateBoss(world, dt);       // §босс: вращение колец + bullet hell
+  updateRift(world, dt);       // §7: центр-разлом ранит задержавшихся (при живом боссе гаснет)
   updateProjectiles(world, dt);// движение снарядов + попадания + выплаты
   updateSuppression(world);    // §3 глушитель: снять метки V в зоне (хил давится в самом хиле)
   applyFury(world, dt);        // §6 вспышка

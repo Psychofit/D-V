@@ -21,6 +21,7 @@ export function createEffects() {
   const prevProj = new Set();     // id снарядов (для вспышек выстрела)
   let furySeen = false;
   let lastPulseT = -1;            // антидубль Пульса по кадрам
+  let prevBossId = null, lastShieldT = -1, lastHitT = -1; // §босс: появление/смерть/попадания
 
   const add = (p) => { if (parts.length < 400) parts.push(p); };
 
@@ -38,6 +39,14 @@ export function createEffects() {
   }
   function glow(x, y, color, r0) {                // мягкое свечение (хил)
     add({ style: 'glow', layer: 'over', x, y, r: r0, vr: 30, life: 0.4, maxLife: 0.4, color, width: 0 });
+  }
+  function repulseShock(x, y, R) {                // волна репульса толстяка (мощный отброс §3)
+    add({ style: 'ring', layer: 'over', x, y, r: 12, vr: (R - 12) / 0.35, life: 0.35, maxLife: 0.35, color: '235,150,90', width: 4 });
+    add({ style: 'ring', layer: 'ground', x, y, r: 8, vr: (R - 8) / 0.4, life: 0.4, maxLife: 0.4, color: '180,130,90', width: 3 });
+    for (let i = 0; i < 14; i++) {                // выброс пыли по фронту волны
+      const a = rnd(0, Math.PI * 2), s = rnd(120, 260);
+      add({ style: 'dot', layer: 'over', x, y, r: rnd(1.5, 3), vx: Math.cos(a) * s, vy: Math.sin(a) * s, grav: 80, life: 0.4, maxLife: 0.4, color: '210,140,90' });
+    }
   }
   function pop(x, y, big) {                        // смерть врага
     add({ style: 'ring', layer: 'over', x, y, r: 4, vr: big ? 260 : 150, life: 0.35, maxLife: 0.35, color: big ? '230,120,120' : '170,170,180', width: 2 });
@@ -95,6 +104,11 @@ export function createEffects() {
       curIds.add(e.id);
       const prev = prevEnemies.get(e.id);
       if (prev && e.hp < prev.hp - 0.5) { spark(e.pos.x, e.pos.y, '255,228,150'); evs.push({ type: 'enemy-hit' }); }
+      if (e.repulseFx && (!prev || prev.rt !== e.repulseFx)) {  // новый репульс толстяка → волна
+        repulseShock(e.pos.x, e.pos.y, e.repulseRadius);
+        evs.push({ type: 'repulse' });
+        shake = Math.max(shake, 7);
+      }
     }
     for (const [id, e] of prevEnemies) {
       if (!curIds.has(id)) {
@@ -104,7 +118,7 @@ export function createEffects() {
       }
     }
     prevEnemies.clear();
-    for (const e of world.enemies) prevEnemies.set(e.id, { x: e.pos.x, y: e.pos.y, type: e.type, hp: e.hp });
+    for (const e of world.enemies) prevEnemies.set(e.id, { x: e.pos.x, y: e.pos.y, type: e.type, hp: e.hp, rt: e.repulseFx });
 
     // вспышки выстрелов (новые снаряды) — у дула стрелка, по ходу полёта
     const curProj = new Set();
@@ -130,6 +144,22 @@ export function createEffects() {
     // вспышка ярости §6 (все V мертвы) — резкий удар: вспышка + тряска
     if (world.fury && !furySeen) { furySeen = true; flash = 1; shake = Math.max(shake, 12); evs.push({ type: 'fury' }); }
     if (!world.fury) furySeen = false;
+
+    // §босс: появление, гибель, попадания/щит
+    const b = world.boss;
+    if (b && prevBossId !== b.id) { prevBossId = b.id; evs.push({ type: 'boss-appear' }); }
+    if (!b && prevBossId !== null) {
+      if (world.bossDefeated) {                        // повержен → бёрст смерти в центре
+        const cx = world.cfg.world.width / 2, cy = world.cfg.world.height / 2;
+        pop(cx, cy, true); ripple(cx, cy, '229,72,120', 4, 22, 340);
+        shake = Math.max(shake, 14); flash = 1; evs.push({ type: 'boss-dead' });
+      }
+      prevBossId = null;
+    }
+    if (b) {
+      if (b.shieldFx && b.shieldFx.t !== lastShieldT) { lastShieldT = b.shieldFx.t; spark(b.shieldFx.x, b.shieldFx.y, b.shieldFx.faction === 'D' ? '255,120,120' : '120,180,255'); }
+      if (b.hitFx && b.hitFx.t !== lastHitT) { lastHitT = b.hitFx.t; spark(b.pos.x, b.pos.y, b.hitFx.faction === 'D' ? '255,180,120' : '150,210,255'); }
+    }
     return evs;
   }
 
@@ -137,6 +167,7 @@ export function createEffects() {
     parts = [];
     entFx.clear(); prevHp.clear(); prevEnemies.clear(); prevProj.clear();
     shake = 0; flash = 0; furySeen = false; lastPulseT = -1;
+    prevBossId = null; lastShieldT = -1; lastHitT = -1;
   }
 
   function update(dt) {

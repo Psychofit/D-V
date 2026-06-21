@@ -75,9 +75,38 @@ export function makeEnemy(world, pos, type = 'swarm') {
     suppressRadiusDarkGain: cfg.suppressRadiusDarkGain ?? 0,
     healSuppressFactor: cfg.healSuppressFactor ?? 1,
     standoff: cfg.standoff ?? 0,
+    repulseRadius: cfg.repulseRadius ?? 0,       // для толстяка (§3): радиальный отброс
+    repulseForce: cfg.repulseForce ?? 0,
+    repulseDamage: cfg.repulseDamage ?? 0,
+    repulseFx: 0,                                // транзиентный след репульса (для эффектов)
     attackCooldown: 0,
     markedUntil: 0,          // метка V (§2): D бьёт сильнее, пока world.time < markedUntil
     targetId: null,
+    alive: true,
+  };
+}
+
+// Босс «Сомнения» (§босс): огромный многогранник в центре с двумя кольцами-щитами.
+// Кольца несут бреши: D-снаряд проходит у angle ≈ ring.angle, V — у ring.angle + π.
+export function makeBoss(world) {
+  const bc = world.cfg.boss;
+  return {
+    id: world.nextId++,
+    kind: 'boss',
+    name: 'СОМНЕНИЯ',
+    subtitle: 'Но что если я не смогу...?',
+    pos: { x: world.cfg.world.width / 2, y: world.cfg.world.height / 2 },
+    hp: bc.hp,
+    maxHp: bc.hp,
+    radius: bc.radius,
+    rings: bc.rings.map((r, i) => ({ radius: r.radius, speed: r.speed, gapHalf: r.gapHalf, angle: i * 0.8 })),
+    phase: 'intro',          // 'intro' (драм-пауза) → 'active' (атакует)
+    spawnT: world.time,
+    radialT: bc.fire.radialInterval,
+    spiralT: bc.fire.spiralInterval,
+    spiralAngle: 0,
+    shieldFx: null,          // транзиент: снаряд погашен щитом
+    hitFx: null,             // транзиент: ядро ранено
     alive: true,
   };
 }

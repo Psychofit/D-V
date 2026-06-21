@@ -40,6 +40,17 @@ function setMove(p, desiredDir, dt) {
   p.vel = scale(d, p.speed);
 }
 
+// Осада босса (§босс): боты распределяются по кольцу вокруг центра (по id, золотым углом)
+// и бьют в ядро — как кольца вращаются, бреши своего цвета периодически впускают их выстрелы.
+function bossSiege(world, p, dt) {
+  const b = world.boss, t = world.time;
+  // распределены по кольцу (золотой угол по id); вьюжим дистанцию и угол → уклонение от пуль
+  const want = 290 + Math.sin(t * 1.6 + p.id) * 48;
+  const ang = p.id * 2.39996 + Math.sin(t * 0.7 + p.id * 2) * 0.5;
+  const desired = { x: b.pos.x + Math.cos(ang) * want, y: b.pos.y + Math.sin(ang) * want };
+  if (dist(p.pos, desired) > 10) setMove(p, dir(p.pos, desired), dt); else p.vel = { x: 0, y: 0 };
+}
+
 export function updateAI(world, dt) {
   for (const e of world.enemies) enemyAI(world, e);
   for (const p of world.players) {
@@ -69,6 +80,12 @@ function enemyAI(world, e) {
 
 function dAI(world, d, dt) {
   const cfg = world.cfg.ai;
+  if (world.boss && world.boss.phase === 'active') {     // §босс: осада + стрельба в ядро
+    bossSiege(world, d, dt);
+    fireProjectile(world, d, dir(d.pos, world.boss.pos));
+    if (world.darkness < cfg.dDarkStopAt && canBuyNode(world, d)) buyNode(world, d);
+    return;
+  }
   // D фокусит толстяка как приоритетную угрозу (за потолком V, добивается только D §2)
   const enemy = nearestEnemy(world, d.pos, 'fat') || nearestEnemy(world, d.pos);
   const medic = nearestAlly(world, d, 'V');
@@ -127,6 +144,14 @@ function pickWard(world, v) {
 
 function vAI(world, v, dt) {
   const cfg = world.cfg.ai;
+  if (world.boss && world.boss.phase === 'active') {     // §босс: осада; лечим раненых D, иначе бьём ядро
+    bossSiege(world, v, dt);
+    const w = pickWard(world, v);
+    if (w && w.hp < w.maxHp * 0.7 && dist(v.pos, w.pos) <= world.cfg.V.shotRange) fireProjectile(world, v, dir(v.pos, w.pos));
+    else fireProjectile(world, v, dir(v.pos, world.boss.pos));
+    if (cfg.investEagerness >= 1 && canBuyNode(world, v)) buyNode(world, v);
+    return;
+  }
   const ward = pickWard(world, v); // приоритет — самый раненый D (фронтлайн), §2
   const enemy = nearestEnemy(world, v.pos);
 
