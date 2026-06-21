@@ -11,6 +11,7 @@
 import { add, sub, scale, dist, len, norm } from '../core/vec2.js';
 import { makeProjectile } from './entities.js';
 import { payKill, payEffectiveHeal } from './economy.js';
+import { tryBossHit } from './boss.js';
 
 // Выстрел игрока в направлении aimDir (единичный вектор). Уважает кулдаун.
 export function fireProjectile(world, player, aimDir) {
@@ -227,6 +228,9 @@ export function updateProjectiles(world, dt) {
     const step = scale(pr.vel, dt);
     pr.pos = add(pr.pos, step);
     pr.traveled += Math.hypot(step.x, step.y);
+
+    // §босс: снаряд игрока у колец босса — гасится щитом или ранит ядро через брешь своего цвета
+    if (world.boss && (pr.faction === 'D' || pr.faction === 'V') && tryBossHit(world, pr)) continue;
 
     if (pr.effect === 'area') { updateAreaProjectile(world, pr); continue; }
     if (pr.traveled >= pr.range) { pr.alive = false; continue; }

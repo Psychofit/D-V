@@ -192,6 +192,68 @@ export function createRenderer(canvas) {
 
   const enemyDraw = { swarm: drawSwarm, fat: drawFat, hunter: drawHunter, ranged: drawRanged, suppressor: drawSuppressor };
 
+  // --- босс «Сомнения» (§босс): многогранник + кольца-щиты с брешами ---------
+  function drawBossRing(x, y, r) {                  // солид-щит + бреши: красная (D), синяя (V) напротив
+    const gh = r.gapHalf, dGap = r.angle, vGap = r.angle + Math.PI;
+    ctx.lineWidth = 7; ctx.strokeStyle = 'rgba(95,85,115,0.55)';   // солидные дуги между брешами
+    ctx.beginPath(); ctx.arc(x, y, r.radius, dGap + gh, vGap - gh); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, r.radius, vGap + gh, dGap - gh + Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 8;                                             // бреши-окна (куда бить)
+    ctx.strokeStyle = 'rgba(229,72,77,0.95)';
+    ctx.beginPath(); ctx.arc(x, y, r.radius, dGap - gh, dGap + gh); ctx.stroke();
+    ctx.strokeStyle = 'rgba(84,182,255,0.95)';
+    ctx.beginPath(); ctx.arc(x, y, r.radius, vGap - gh, vGap + gh); ctx.stroke();
+  }
+
+  function drawBoss(world) {
+    const b = world.boss, x = b.pos.x, y = b.pos.y, t = world.time, N = 11;
+    ctx.beginPath();                                 // извивающееся тело-многогранник
+    for (let i = 0; i <= N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const rr = b.radius * (1 + 0.12 * Math.sin(t * 2 + i * 0.9) + 0.06 * Math.sin(t * 3.3 - i));
+      const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath();
+    const g = ctx.createRadialGradient(x, y, 4, x, y, b.radius * 1.2);
+    g.addColorStop(0, '#3a1430'); g.addColorStop(0.6, '#1c0d22'); g.addColorStop(1, '#0a0512');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(150,60,140,0.6)'; ctx.stroke();
+    const hit = b.hitFx && t - b.hitFx.t < 0.12 ? 0.5 : 0;        // мигание ядра при попадании
+    const core = 0.5 + 0.5 * Math.sin(t * 2.2) + hit;
+    const cg = ctx.createRadialGradient(x, y, 0, x, y, b.radius * 0.55);
+    cg.addColorStop(0, `rgba(225,85,125,${0.5 + core * 0.4})`); cg.addColorStop(1, 'rgba(120,30,90,0)');
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(x, y, b.radius * 0.55, 0, Math.PI * 2); ctx.fill();
+    for (const r of b.rings) drawBossRing(x, y, r);
+  }
+
+  function drawBossOverlay(world, W, H) {            // экранно: драм-имя при появлении + полоса hp
+    const b = world.boss, introT = world.time - b.spawnT, dur = world.cfg.boss.introSeconds;
+    let a = 0;
+    if (b.phase === 'intro') a = introT < 0.5 ? introT / 0.5 : introT > dur - 1 ? Math.max(0, dur - introT) : 1;
+    if (a > 0) {
+      ctx.fillStyle = `rgba(6,4,10,${a * 0.5})`; ctx.fillRect(0, 0, W, H); // драм-затемнение сцены
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(180,40,80,0.85)'; ctx.shadowBlur = 32;       // зловещее свечение имени
+      ctx.fillStyle = `rgba(240,220,232,${a})`; ctx.font = 'bold 120px Georgia, serif';
+      ctx.fillText(b.name, W / 2, H / 2 - 8);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = `rgba(212,142,168,${a * 0.95})`; ctx.font = 'italic 46px Georgia, serif';
+      ctx.fillText(b.subtitle, W / 2, H / 2 + 74);
+    }
+    if (b.phase === 'active') {
+      const bw = W * 0.5, bx = (W - bw) / 2, by = 40, bh = 16;
+      ctx.fillStyle = 'rgba(10,8,14,0.7)'; ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
+      ctx.fillStyle = '#2a1020'; ctx.fillRect(bx, by, bw, bh);
+      const lg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+      lg.addColorStop(0, '#7a1f4a'); lg.addColorStop(1, '#e5484d');
+      ctx.fillStyle = lg; ctx.fillRect(bx, by, bw * Math.max(0, b.hp / b.maxHp), bh);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#e8d8e2'; ctx.font = 'bold 20px monospace';
+      ctx.fillText(b.name, W / 2, by + bh + 22);
+    }
+    ctx.textAlign = 'left';
+  }
+
   // --- кадр ----------------------------------------------------------------
   function draw(world, effects) {
     const W = world.cfg.world.width, H = world.cfg.world.height, d = world.darkness;
@@ -215,6 +277,7 @@ export function createRenderer(canvas) {
     }
 
     if (effects) effects.drawGround(ctx);            // наземные ударные волны D
+    if (world.boss) drawBoss(world);                 // §босс: тело + кольца-щиты (под пулями/игроками)
 
     // снаряды — со следом (motion-blur), свечением и ядром
     for (const pr of world.projectiles) {
@@ -285,6 +348,7 @@ export function createRenderer(canvas) {
     ctx.restore();
 
     vignette(W, H, d);                               // тьма сжимается с краёв (экранно)
+    if (world.boss) drawBossOverlay(world, W, H);    // §босс: драм-имя + полоса hp (экранно)
     if (effects) effects.drawScreen(ctx, W, H);      // вспышка ярости §6
   }
 

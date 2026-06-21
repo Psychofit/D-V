@@ -130,6 +130,16 @@ export function createAudio() {
         case 'repulse':                                  // толстяк: тяжёлая волна отброса (низкий бум + гул)
           if (ok('repulse', 0.12)) { tone({ freq: vary(80), type: 'sine', dur: 0.35, peak: 0.22, sweep: 0.5 }); noise({ dur: 0.3, peak: 0.16, filter: 'lowpass', freq: 900, sweep: 0.4 }); }
           break;
+        case 'boss-appear':                              // §босс: низкий зловещий гул, медленно вверх
+          tone({ freq: 44, type: 'sine', dur: 3.0, peak: 0.3, sweep: 1.7 });
+          tone({ freq: 66, type: 'sine', dur: 3.0, peak: 0.16, detune: -12 });
+          noise({ dur: 2.5, peak: 0.08, filter: 'lowpass', freq: 220 });
+          break;
+        case 'boss-dead':                                // §босс: тяжёлый обвал
+          tone({ freq: 90, type: 'sine', dur: 1.2, peak: 0.3, sweep: 0.3 });
+          tone({ freq: 140, type: 'sawtooth', dur: 0.8, peak: 0.16, sweep: 0.4 });
+          noise({ dur: 0.8, peak: 0.2, filter: 'lowpass', freq: 1000, sweep: 0.3 });
+          break;
         case 'fury':                                     // §6: резкий диссонантный кластер + бум
           tone({ freq: 160, type: 'sawtooth', dur: 0.7, peak: 0.15 });
           tone({ freq: 226, type: 'sawtooth', dur: 0.7, peak: 0.13, detune: 20 });

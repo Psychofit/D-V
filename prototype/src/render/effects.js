@@ -21,6 +21,7 @@ export function createEffects() {
   const prevProj = new Set();     // id снарядов (для вспышек выстрела)
   let furySeen = false;
   let lastPulseT = -1;            // антидубль Пульса по кадрам
+  let prevBossId = null, lastShieldT = -1, lastHitT = -1; // §босс: появление/смерть/попадания
 
   const add = (p) => { if (parts.length < 400) parts.push(p); };
 
@@ -143,6 +144,22 @@ export function createEffects() {
     // вспышка ярости §6 (все V мертвы) — резкий удар: вспышка + тряска
     if (world.fury && !furySeen) { furySeen = true; flash = 1; shake = Math.max(shake, 12); evs.push({ type: 'fury' }); }
     if (!world.fury) furySeen = false;
+
+    // §босс: появление, гибель, попадания/щит
+    const b = world.boss;
+    if (b && prevBossId !== b.id) { prevBossId = b.id; evs.push({ type: 'boss-appear' }); }
+    if (!b && prevBossId !== null) {
+      if (world.bossDefeated) {                        // повержен → бёрст смерти в центре
+        const cx = world.cfg.world.width / 2, cy = world.cfg.world.height / 2;
+        pop(cx, cy, true); ripple(cx, cy, '229,72,120', 4, 22, 340);
+        shake = Math.max(shake, 14); flash = 1; evs.push({ type: 'boss-dead' });
+      }
+      prevBossId = null;
+    }
+    if (b) {
+      if (b.shieldFx && b.shieldFx.t !== lastShieldT) { lastShieldT = b.shieldFx.t; spark(b.shieldFx.x, b.shieldFx.y, b.shieldFx.faction === 'D' ? '255,120,120' : '120,180,255'); }
+      if (b.hitFx && b.hitFx.t !== lastHitT) { lastHitT = b.hitFx.t; spark(b.pos.x, b.pos.y, b.hitFx.faction === 'D' ? '255,180,120' : '150,210,255'); }
+    }
     return evs;
   }
 
@@ -150,6 +167,7 @@ export function createEffects() {
     parts = [];
     entFx.clear(); prevHp.clear(); prevEnemies.clear(); prevProj.clear();
     shake = 0; flash = 0; furySeen = false; lastPulseT = -1;
+    prevBossId = null; lastShieldT = -1; lastHitT = -1;
   }
 
   function update(dt) {
