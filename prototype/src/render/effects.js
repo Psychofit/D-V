@@ -39,6 +39,14 @@ export function createEffects() {
   function glow(x, y, color, r0) {                // мягкое свечение (хил)
     add({ style: 'glow', layer: 'over', x, y, r: r0, vr: 30, life: 0.4, maxLife: 0.4, color, width: 0 });
   }
+  function repulseShock(x, y, R) {                // волна репульса толстяка (мощный отброс §3)
+    add({ style: 'ring', layer: 'over', x, y, r: 12, vr: (R - 12) / 0.35, life: 0.35, maxLife: 0.35, color: '235,150,90', width: 4 });
+    add({ style: 'ring', layer: 'ground', x, y, r: 8, vr: (R - 8) / 0.4, life: 0.4, maxLife: 0.4, color: '180,130,90', width: 3 });
+    for (let i = 0; i < 14; i++) {                // выброс пыли по фронту волны
+      const a = rnd(0, Math.PI * 2), s = rnd(120, 260);
+      add({ style: 'dot', layer: 'over', x, y, r: rnd(1.5, 3), vx: Math.cos(a) * s, vy: Math.sin(a) * s, grav: 80, life: 0.4, maxLife: 0.4, color: '210,140,90' });
+    }
+  }
   function pop(x, y, big) {                        // смерть врага
     add({ style: 'ring', layer: 'over', x, y, r: 4, vr: big ? 260 : 150, life: 0.35, maxLife: 0.35, color: big ? '230,120,120' : '170,170,180', width: 2 });
     for (let i = 0; i < (big ? 10 : 5); i++) {
@@ -95,6 +103,11 @@ export function createEffects() {
       curIds.add(e.id);
       const prev = prevEnemies.get(e.id);
       if (prev && e.hp < prev.hp - 0.5) { spark(e.pos.x, e.pos.y, '255,228,150'); evs.push({ type: 'enemy-hit' }); }
+      if (e.repulseFx && (!prev || prev.rt !== e.repulseFx)) {  // новый репульс толстяка → волна
+        repulseShock(e.pos.x, e.pos.y, e.repulseRadius);
+        evs.push({ type: 'repulse' });
+        shake = Math.max(shake, 7);
+      }
     }
     for (const [id, e] of prevEnemies) {
       if (!curIds.has(id)) {
@@ -104,7 +117,7 @@ export function createEffects() {
       }
     }
     prevEnemies.clear();
-    for (const e of world.enemies) prevEnemies.set(e.id, { x: e.pos.x, y: e.pos.y, type: e.type, hp: e.hp });
+    for (const e of world.enemies) prevEnemies.set(e.id, { x: e.pos.x, y: e.pos.y, type: e.type, hp: e.hp, rt: e.repulseFx });
 
     // вспышки выстрелов (новые снаряды) — у дула стрелка, по ходу полёта
     const curProj = new Set();

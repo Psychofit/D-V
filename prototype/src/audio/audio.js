@@ -127,6 +127,9 @@ export function createAudio() {
         case 'pulse':                                    // вжух конуса D + низкий толчок
           if (ok('pulse', 0.08)) { noise({ dur: 0.25, peak: 0.15, filter: 'lowpass', freq: 1200, sweep: 0.25 }); tone({ freq: vary(110), type: 'sawtooth', dur: 0.18, peak: 0.1, sweep: 0.5 }); }
           break;
+        case 'repulse':                                  // толстяк: тяжёлая волна отброса (низкий бум + гул)
+          if (ok('repulse', 0.12)) { tone({ freq: vary(80), type: 'sine', dur: 0.35, peak: 0.22, sweep: 0.5 }); noise({ dur: 0.3, peak: 0.16, filter: 'lowpass', freq: 900, sweep: 0.4 }); }
+          break;
         case 'fury':                                     // §6: резкий диссонантный кластер + бум
           tone({ freq: 160, type: 'sawtooth', dur: 0.7, peak: 0.15 });
           tone({ freq: 226, type: 'sawtooth', dur: 0.7, peak: 0.13, detune: 20 });

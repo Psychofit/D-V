@@ -167,12 +167,33 @@ export function updateEnemyAttacks(world, dt) {
         fireEnemyProjectile(world, e, target, dmgMul);
         e.attackCooldown = e.attackInterval / spdMul;
       }
+    } else if (e.attackKind === 'repulse') {
+      if (d <= e.repulseRadius) {                      // толстяк: радиальный отброс (§3)
+        repulseWave(world, e, dmgMul);
+        e.attackCooldown = e.attackInterval / spdMul;
+      }
     } else if (d <= e.radius + target.radius + e.attackRange) {
       target.hp -= e.contactDamage * dmgMul;
       e.attackCooldown = e.attackInterval / spdMul;
       if (target.hp <= 0) killPlayer(world, target);
     }
   }
+}
+
+// Репульс толстяка (§3): радиальная волна — отбрасывает ВСЕХ игроков в радиусе наружу и
+// бьёт, расчищая путь союзникам вглубь. Отброс — мгновенное смещение позиции (integrate
+// зажмёт в границы; может впихнуть в опасный разлом — честное эмерджентное взаимодействие).
+function repulseWave(world, e, dmgMul) {
+  for (const p of world.players) {
+    if (!p.alive) continue;
+    const pd = dist(e.pos, p.pos);
+    if (pd > e.repulseRadius) continue;
+    const out = pd > 1 ? norm(sub(p.pos, e.pos)) : { x: 1, y: 0 };
+    p.pos = add(p.pos, scale(out, e.repulseForce));
+    p.hp -= e.repulseDamage * dmgMul;
+    if (p.hp <= 0) killPlayer(world, p);
+  }
+  e.repulseFx = world.time; // след для эффектов/звука (диффинг в effects.js)
 }
 
 function fireEnemyProjectile(world, enemy, target, dmgMul) {

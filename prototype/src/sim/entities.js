@@ -75,6 +75,10 @@ export function makeEnemy(world, pos, type = 'swarm') {
     suppressRadiusDarkGain: cfg.suppressRadiusDarkGain ?? 0,
     healSuppressFactor: cfg.healSuppressFactor ?? 1,
     standoff: cfg.standoff ?? 0,
+    repulseRadius: cfg.repulseRadius ?? 0,       // для толстяка (§3): радиальный отброс
+    repulseForce: cfg.repulseForce ?? 0,
+    repulseDamage: cfg.repulseDamage ?? 0,
+    repulseFx: 0,                                // транзиентный след репульса (для эффектов)
     attackCooldown: 0,
     markedUntil: 0,          // метка V (§2): D бьёт сильнее, пока world.time < markedUntil
     targetId: null,
