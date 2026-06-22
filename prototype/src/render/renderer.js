@@ -259,12 +259,55 @@ export function createRenderer(canvas) {
     ctx.textAlign = 'left';
   }
 
+  // маркер управляемого игрока: пульсирующее кольцо + подпрыгивающий шеврон над головой
+  function youMarker(x, y, r, t) {
+    const pulse = 0.5 + 0.5 * Math.sin(t * 4);
+    ctx.lineWidth = 2.5; ctx.strokeStyle = `rgba(255,255,255,${0.5 + pulse * 0.45})`;
+    ctx.beginPath(); ctx.arc(x, y, r + 5 + pulse * 3, 0, Math.PI * 2); ctx.stroke();
+    const cy0 = y - r - 13 - Math.sin(t * 4) * 3;     // шеврон вниз (указывает на тебя), подпрыгивает
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(x, cy0 + 8); ctx.lineTo(x - 6, cy0 - 3); ctx.lineTo(x + 6, cy0 - 3); ctx.closePath(); ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.stroke();
+  }
+
+  // миникарта (правый-нижний угол): весь мир + враги/босс/союзники, ТЫ — ярко, рамка вида камеры
+  function drawMinimap(world, cam, VW, VH) {
+    const W = world.cfg.world.width, H = world.cfg.world.height;
+    const mw = 190, mh = mw * H / W, mx = VW - mw - 14, my = VH - mh - 14, s = mw / W;
+    const px = (wx) => mx + wx * s, py = (wy) => my + wy * s;
+    ctx.fillStyle = 'rgba(10,9,16,0.72)'; ctx.fillRect(mx, my, mw, mh);
+    ctx.strokeStyle = 'rgba(120,120,150,0.5)'; ctx.lineWidth = 1; ctx.strokeRect(mx, my, mw, mh);
+    ctx.fillStyle = 'rgba(229,72,90,0.5)'; ctx.beginPath(); ctx.arc(px(W / 2), py(H / 2), 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(205,95,95,0.85)';
+    for (const e of world.enemies) if (e.alive) ctx.fillRect(px(e.pos.x) - 1, py(e.pos.y) - 1, 2, 2);
+    if (world.boss) { ctx.fillStyle = '#e5484d'; ctx.beginPath(); ctx.arc(px(world.boss.pos.x), py(world.boss.pos.y), 5, 0, Math.PI * 2); ctx.fill(); }
+    for (const p of world.players) {
+      if (!p.alive || p.controlled) continue;
+      ctx.fillStyle = p.faction === 'D' ? 'rgba(229,100,107,0.9)' : 'rgba(95,191,230,0.9)';
+      ctx.beginPath(); ctx.arc(px(p.pos.x), py(p.pos.y), 1.7, 0, Math.PI * 2); ctx.fill();
+    }
+    const vw2 = cam.vw / (2 * cam.zoom), vh2 = cam.vh / (2 * cam.zoom); // рамка «что на экране»
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+    ctx.strokeRect(px(cam.x - vw2), py(cam.y - vh2), vw2 * 2 * s, vh2 * 2 * s);
+    const me = world.players.find((p) => p.controlled && p.alive);
+    if (me) {
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px(me.pos.x), py(me.pos.y), 3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(px(me.pos.x), py(me.pos.y), 6, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
   // --- кадр ----------------------------------------------------------------
-  function draw(world, effects) {
+  function draw(world, effects, camera) {
     const W = world.cfg.world.width, H = world.cfg.world.height, d = world.darkness;
+    const cam = camera || { x: W / 2, y: H / 2, zoom: 1, vw: W, vh: H }; // headless: весь мир
+    const VW = cam.vw, VH = cam.vh;
     const so = effects ? effects.screenOffset() : { x: 0, y: 0 };
-    ctx.save();
-    ctx.translate(so.x, so.y);
+
+    ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0, 0, VW, VH);   // база вне мира
+    ctx.save();                                              // --- мировой слой под камерой ---
+    ctx.translate(VW / 2 + so.x, VH / 2 + so.y);
+    ctx.scale(cam.zoom, cam.zoom);
+    ctx.translate(-cam.x, -cam.y);
 
     paintBackground(W, H, d);
     const cx = W / 2, cy = H / 2;
@@ -342,19 +385,20 @@ export function createRenderer(canvas) {
       }
 
       if (p.faction === 'D') drawD(x, y, r); else drawV(x, y, r);
-      if (p.controlled) disc(x, y, r + 2, null, '#fff', 2);     // твой персонаж
       if (p.loadout.provoker) disc(x, y, r + 8, null, '#ffb454', 1.5); // аггро-роль §7
+      if (p.controlled) youMarker(x, y, r, world.time);        // твой персонаж — кольцо + шеврон
       hpRing(p, x, y, r);
       ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
       ctx.fillText(p.faction, x, y + 4);
     }
 
     if (effects) effects.drawOver(ctx);              // рябь V, свечение хила, смерти
-    ctx.restore();
+    ctx.restore();                                   // --- конец мирового слоя ---
 
-    vignette(W, H, d);                               // тьма сжимается с краёв (экранно)
-    if (world.boss) drawBossOverlay(world, W, H);    // §босс: драм-имя + полоса hp (экранно)
-    if (effects) effects.drawScreen(ctx, W, H);      // вспышка ярости §6
+    vignette(VW, VH, d);                             // тьма сжимается с краёв (экранно)
+    if (world.boss) drawBossOverlay(world, VW, VH);  // §босс: драм-имя + полоса hp (экранно)
+    if (effects) effects.drawScreen(ctx, VW, VH);    // вспышка ярости §6
+    drawMinimap(world, cam, VW, VH);                 // обзор всей арены + «ты»
   }
 
   return { draw };

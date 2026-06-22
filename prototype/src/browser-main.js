@@ -19,8 +19,9 @@ import {
 
 const cfg = structuredClone(CONFIG); // локальная глубокая копия (тумблеры живые, общий CONFIG не трогаем)
 const canvas = document.getElementById('game');
-canvas.width = cfg.world.width;
-canvas.height = cfg.world.height;
+const VIEW_W = 1280, VIEW_H = 800;   // вьюпорт камеры (мир 2400×1600 скроллится под ним)
+canvas.width = VIEW_W;
+canvas.height = VIEW_H;
 
 const renderer = createRenderer(canvas);
 const effects = createEffects();
@@ -43,11 +44,23 @@ let paused = false;
 let speed = 1;
 let possessed = null;             // 'D' | 'V' | null
 const keys = new Set();
-const mouse = { x: cfg.world.width / 2, y: cfg.world.height / 2, down: false };
+const mouse = { x: cfg.world.width / 2, y: cfg.world.height / 2, sx: VIEW_W / 2, sy: VIEW_H / 2, down: false };
 
 function controlledPlayer() {
   if (!possessed) return null;
   return world.players.find((p) => p.faction === possessed && p.alive) || null;
+}
+
+// --- камера-слежение: вьюпорт центрируется на управляемом игроке (мир скроллится) ---
+const CAM_ZOOM = 1.7;
+const camera = { x: cfg.world.width / 2, y: cfg.world.height / 2, zoom: CAM_ZOOM, vw: VIEW_W, vh: VIEW_H };
+const clampC = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+function updateCamera() {
+  const p = controlledPlayer();
+  const tx = p ? p.pos.x : cfg.world.width / 2, ty = p ? p.pos.y : cfg.world.height / 2;
+  const hw = VIEW_W / (2 * CAM_ZOOM), hh = VIEW_H / (2 * CAM_ZOOM);
+  camera.x = clampC(tx, hw, cfg.world.width - hw);   // не выезжать за края мира
+  camera.y = clampC(ty, hh, cfg.world.height - hh);
 }
 
 function applyInput() {
@@ -56,6 +69,9 @@ function applyInput() {
   const p = controlledPlayer();
   if (!p) return;
   p.controlled = true;
+  // прицел мыши: экранные координаты → мировые через камеру (управление со скроллом)
+  mouse.x = camera.x + (mouse.sx - VIEW_W / 2) / camera.zoom;
+  mouse.y = camera.y + (mouse.sy - VIEW_H / 2) / camera.zoom;
 
   let dx = 0, dy = 0;
   if (keys.has('w') || keys.has('arrowup')) dy -= 1;
@@ -84,10 +100,10 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 
-function toWorld(e) {
+function toWorld(e) {                 // запоминаем экранные координаты курсора (в мир переведём через камеру)
   const r = canvas.getBoundingClientRect();
-  mouse.x = (e.clientX - r.left) * (canvas.width / r.width);
-  mouse.y = (e.clientY - r.top) * (canvas.height / r.height);
+  mouse.sx = (e.clientX - r.left) * (canvas.width / r.width);
+  mouse.sy = (e.clientY - r.top) * (canvas.height / r.height);
 }
 canvas.addEventListener('mousemove', toWorld);
 canvas.addEventListener('mousedown', (e) => { toWorld(e); mouse.down = true; });
@@ -275,7 +291,8 @@ function frame(now) {
   if (breatherAt && !breatherShown && performance.now() >= breatherAt) { breatherShown = true; breatherAt = 0; openBreather(); }
   audio.update(world);   // гул тьмы следует за darkness (звучит и на паузе)
   effects.update(real);
-  renderer.draw(world, effects);
+  updateCamera();        // центрировать вьюпорт на управляемом игроке
+  renderer.draw(world, effects, camera);
   hud.update(world, recorder);
   requestAnimationFrame(frame);
 }
